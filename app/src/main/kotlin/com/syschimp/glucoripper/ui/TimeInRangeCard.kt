@@ -21,14 +21,15 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
+import com.syschimp.glucoripper.ui.theme.GlucoseHigh
+import com.syschimp.glucoripper.ui.theme.GlucoseInRange
+import com.syschimp.glucoripper.ui.theme.GlucoseLow
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -78,10 +79,6 @@ fun computeTimeInRange(
     )
 }
 
-private val lowColor = Color(0xFFE53935)
-private val rangeColor = Color(0xFF43A047)
-private val highColor = Color(0xFFD81B60)
-
 @Composable
 fun TimeInRangeCard(
     stats: TimeInRangeStats,
@@ -89,26 +86,38 @@ fun TimeInRangeCard(
     lowMgDl: Double,
     highMgDl: Double,
 ) {
-    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
-    val primary = MaterialTheme.colorScheme.primary
-    val bandFill = primary.copy(alpha = 0.10f)
+    val trackColor = MaterialTheme.colorScheme.surfaceVariant
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(
-                "Last ${stats.windowDays} days",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column(
+            Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "Time in range",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    "Last ${stats.windowDays} days",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (stats.count == 0) {
                 Text(
-                    "No readings yet in this window",
+                    "No readings in this window yet",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -120,40 +129,31 @@ fun TimeInRangeCard(
                     style = MaterialTheme.typography.displaySmall,
                     fontWeight = FontWeight.Bold,
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(8.dp))
                 Text(
                     "in range",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 6.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
             }
             StackedBar(
                 low = stats.lowPct,
                 inRange = stats.inRangePct,
                 high = stats.highPct,
-                trackColor = surfaceVariant,
+                trackColor = trackColor,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Metric("Low", "${stats.lowPct}%", lowColor)
+                Metric("Low", "${stats.lowPct}%", GlucoseLow)
                 Metric(
                     "Average",
                     stats.averageMgDl?.let { formatGlucose(it, unit) + " " + unitLabel(unit) } ?: "—",
                     MaterialTheme.colorScheme.onSurface,
                 )
-                Metric("High", "${stats.highPct}%", highColor)
-            }
-            if (stats.dailyAveragesMgDl.size >= 2) {
-                Sparkline(
-                    data = stats.dailyAveragesMgDl,
-                    lowMgDl = lowMgDl,
-                    highMgDl = highMgDl,
-                    lineColor = primary,
-                    bandColor = bandFill,
-                )
+                Metric("High", "${stats.highPct}%", GlucoseHigh)
             }
             Text(
                 "${stats.count} readings · target ${formatGlucose(lowMgDl, unit)}–${formatGlucose(highMgDl, unit)} ${unitLabel(unit)}",
@@ -186,7 +186,7 @@ private fun StackedBar(low: Int, inRange: Int, high: Int, trackColor: Color) {
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(10.dp),
+            .height(12.dp),
     ) {
         val total = (low + inRange + high).coerceAtLeast(1).toFloat()
         val w = size.width
@@ -195,47 +195,8 @@ private fun StackedBar(low: Int, inRange: Int, high: Int, trackColor: Color) {
         val highW = w * high / total
         val radius = CornerRadius(size.height / 2f, size.height / 2f)
         drawRoundRect(color = trackColor, cornerRadius = radius)
-        drawRect(color = lowColor, topLeft = Offset(0f, 0f), size = Size(lowW, size.height))
-        drawRect(color = rangeColor, topLeft = Offset(lowW, 0f), size = Size(rangeW, size.height))
-        drawRect(color = highColor, topLeft = Offset(lowW + rangeW, 0f), size = Size(highW, size.height))
-    }
-}
-
-@Composable
-private fun Sparkline(
-    data: List<Double>,
-    lowMgDl: Double,
-    highMgDl: Double,
-    lineColor: Color,
-    bandColor: Color,
-) {
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .padding(top = 4.dp),
-    ) {
-        if (data.size < 2) return@Canvas
-        val min = (data.min()).coerceAtMost(lowMgDl - 10).toFloat()
-        val max = (data.max()).coerceAtLeast(highMgDl + 10).toFloat()
-        val span = (max - min).coerceAtLeast(1f)
-        fun yFor(v: Float): Float = size.height - ((v - min) / span) * size.height
-
-        drawRect(
-            color = bandColor,
-            topLeft = Offset(0f, yFor(highMgDl.toFloat())),
-            size = Size(
-                width = size.width,
-                height = yFor(lowMgDl.toFloat()) - yFor(highMgDl.toFloat()),
-            ),
-        )
-
-        val path = Path()
-        data.forEachIndexed { i, v ->
-            val x = size.width * i / (data.size - 1)
-            val y = yFor(v.toFloat())
-            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
-        drawPath(path = path, color = lineColor, style = Stroke(width = 3f))
+        drawRect(color = GlucoseLow, topLeft = Offset(0f, 0f), size = Size(lowW, size.height))
+        drawRect(color = GlucoseInRange, topLeft = Offset(lowW, 0f), size = Size(rangeW, size.height))
+        drawRect(color = GlucoseHigh, topLeft = Offset(lowW + rangeW, 0f), size = Size(highW, size.height))
     }
 }

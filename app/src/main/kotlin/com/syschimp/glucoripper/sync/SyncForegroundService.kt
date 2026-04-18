@@ -54,12 +54,12 @@ class SyncForegroundService : Service() {
                     .onSuccess {
                         Log.i(
                             tag,
-                            "Sync ok: pulled=${it.pulled} written=${it.written} " +
+                            "Sync ok: pulled=${it.pulled} staged=${it.staged} " +
                                     "skippedCtrl=${it.skippedControlSolutions} highest=${it.highestSequence}"
                         )
                         notifyResult(
                             title = getString(R.string.notif_sync_done),
-                            text = getString(R.string.notif_sync_done_body, it.written),
+                            text = getString(R.string.notif_sync_done_body, it.staged),
                         )
                     }
                     .onFailure {

@@ -7,50 +7,36 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.material3.FilterChip
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.ReadingAnnotation
-import com.syschimp.glucoripper.data.SyncHistoryEntry
-import com.syschimp.glucoripper.data.UserPreferences
+import com.syschimp.glucoripper.data.StagedReading
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
-import kotlinx.coroutines.launch
-import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -75,8 +61,11 @@ fun ReadingDetailSheet(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Reading", style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "Reading",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     formatGlucose(reading.level.inMilligramsPerDeciliter, unit),
@@ -117,6 +106,7 @@ fun ReadingDetailSheet(
                     placeholder = { Text("Optional: carbs, insulin, context…") },
                     minLines = 2,
                     maxLines = 4,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
                 )
                 Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
                     TextButton(onClick = { onSaveNote(noteText) }) { Text("Save note") }
@@ -125,10 +115,13 @@ fun ReadingDetailSheet(
 
             HorizontalDivider()
             Field("Specimen", specimenLabel(reading.specimenSource))
-            Field("Device", listOfNotNull(
-                reading.metadata.device?.manufacturer,
-                reading.metadata.device?.model,
-            ).joinToString(" ").ifBlank { "—" })
+            Field(
+                "Device",
+                listOfNotNull(
+                    reading.metadata.device?.manufacturer,
+                    reading.metadata.device?.model,
+                ).joinToString(" ").ifBlank { "—" },
+            )
             Field("Source ID", reading.metadata.clientRecordId ?: reading.metadata.id)
         }
     }
@@ -180,8 +173,11 @@ private fun FeelingChips(selected: Feeling?, onSelect: (Feeling?) -> Unit) {
 @Composable
 private fun Field(label: String, value: String) {
     Column {
-        Text(label, style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(value, style = MaterialTheme.typography.bodyLarge)
     }
 }
@@ -204,126 +200,125 @@ private fun specimenLabel(code: Int): String = when (code) {
     else -> "Unknown"
 }
 
-// ────────────────────────── Settings ──────────────────────────
+// ────────────────────────── Staged reading detail ──────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsSheet(
-    prefs: UserPreferences,
+fun StagedReadingDetailSheet(
+    staged: StagedReading,
+    unit: GlucoseUnit,
     onDismiss: () -> Unit,
-    onSaveUnit: (GlucoseUnit) -> Unit,
-    onSaveRange: (lowMgDl: Double, highMgDl: Double) -> Unit,
+    onUpdate: ((StagedReading) -> StagedReading) -> Unit,
+    onPush: () -> Unit,
+    onDiscard: () -> Unit,
 ) {
-    var lowText by remember(prefs) { mutableStateOf("%.0f".format(prefs.targetLowMgDl)) }
-    var highText by remember(prefs) { mutableStateOf("%.0f".format(prefs.targetHighMgDl)) }
-    val scope = rememberCoroutineScope()
+    var noteText by remember(staged.note) { mutableStateOf(staged.note.orEmpty()) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Settings", style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold)
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Display units", style = MaterialTheme.typography.labelLarge)
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    val options = listOf(GlucoseUnit.MG_PER_DL to "mg/dL", GlucoseUnit.MMOL_PER_L to "mmol/L")
-                    options.forEachIndexed { index, (u, label) ->
-                        SegmentedButton(
-                            selected = prefs.unit == u,
-                            onClick = { onSaveUnit(u) },
-                            shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                        ) { Text(label) }
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Target range (mg/dL)", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedTextField(
-                        value = lowText, onValueChange = { lowText = it.filter { c -> c.isDigit() } },
-                        label = { Text("Low") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                    )
-                    OutlinedTextField(
-                        value = highText, onValueChange = { highText = it.filter { c -> c.isDigit() } },
-                        label = { Text("High") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                    )
-                }
-                TextButton(onClick = {
-                    val low = lowText.toDoubleOrNull() ?: prefs.targetLowMgDl
-                    val high = highText.toDoubleOrNull() ?: prefs.targetHighMgDl
-                    if (high > low) onSaveRange(low, high)
-                }) { Text("Save target range") }
-            }
-        }
-    }
-}
-
-// ────────────────────────── Sync history ──────────────────────────
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SyncHistorySheet(
-    entries: List<SyncHistoryEntry>,
-    onDismiss: () -> Unit,
-    onClear: () -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 16.dp)) {
             Row(
-                Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Sync history", style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold)
-                TextButton(onClick = onClear) { Text("Clear") }
-            }
-            Spacer(Modifier.height(8.dp))
-            if (entries.isEmpty()) {
                 Text(
-                    "Nothing synced yet.",
-                    style = MaterialTheme.typography.bodyMedium,
+                    "Pending reading",
+                    style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(entries) { e ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (e.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                                contentDescription = null,
-                                tint = if (e.success) Color(0xFF43A047) else Color(0xFFE53935),
-                            )
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) {
-                                Text(
-                                    detailTimeFormatter.format(
-                                        Instant.ofEpochMilli(e.timestampMillis)
-                                            .atZone(ZoneId.systemDefault())
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                                Text(
-                                    if (e.success) {
-                                        "Pulled ${e.pulled}, wrote ${e.written}" +
-                                                if (e.skippedControl > 0) ", skipped ${e.skippedControl}" else ""
-                                    } else (e.message ?: "Failed"),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        HorizontalDivider()
-                    }
+                Text(
+                    "Seq #${staged.sequenceNumber}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    formatGlucose(staged.mgPerDl, unit),
+                    style = MaterialTheme.typography.displayMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    unitLabel(unit),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            Text(
+                detailTimeFormatter.format(staged.time.atZone(ZoneId.systemDefault())),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            HorizontalDivider()
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Meal", style = MaterialTheme.typography.labelLarge)
+                MealChips(
+                    selected = staged.effectiveMeal,
+                    onSelect = { meal ->
+                        onUpdate { it.copy(userMeal = if (meal == staged.meterMeal) null else meal) }
+                    },
+                )
+                if (staged.userMeal != null && staged.userMeal != staged.meterMeal) {
+                    Text(
+                        "Meter reported: ${mealLabel(staged.meterMeal)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("How are you feeling?", style = MaterialTheme.typography.labelLarge)
+                FeelingChips(
+                    selected = staged.feeling,
+                    onSelect = { f -> onUpdate { it.copy(feeling = f) } },
+                )
+            }
+
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Note", style = MaterialTheme.typography.labelLarge)
+                OutlinedTextField(
+                    value = noteText,
+                    onValueChange = { noteText = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Optional: carbs, insulin, context…") },
+                    minLines = 2,
+                    maxLines = 4,
+                )
+                TextButton(
+                    onClick = {
+                        val cleaned = noteText.trim().ifEmpty { null }
+                        onUpdate { it.copy(note = cleaned) }
+                    },
+                    modifier = Modifier.align(Alignment.End),
+                ) { Text("Save note") }
+            }
+
+            HorizontalDivider()
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        onDiscard()
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Discard") }
+                Button(
+                    onClick = {
+                        onPush()
+                        onDismiss()
+                    },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Send to HC") }
             }
         }
     }

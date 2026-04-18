@@ -11,18 +11,25 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.syschimp.glucoripper.companion.MeterPairingManager
 import com.syschimp.glucoripper.data.Annotations
+import com.syschimp.glucoripper.data.AutoPushMode
 import com.syschimp.glucoripper.data.CsvExporter
 import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.Preferences
 import com.syschimp.glucoripper.data.ReadingAnnotation
+import com.syschimp.glucoripper.data.StagedReading
+import com.syschimp.glucoripper.data.StagingStore
 import com.syschimp.glucoripper.data.SyncHistory
 import com.syschimp.glucoripper.data.SyncHistoryEntry
 import com.syschimp.glucoripper.data.UserPreferences
 import com.syschimp.glucoripper.health.HealthConnectRepository
+import com.syschimp.glucoripper.sync.AutoPushScheduler
+import com.syschimp.glucoripper.sync.StagingPusher
 import com.syschimp.glucoripper.sync.SyncBus
 import com.syschimp.glucoripper.sync.SyncForegroundService
 import com.syschimp.glucoripper.sync.SyncState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,9 +55,16 @@ data class UiState(
     val syncing: Boolean = false,
     val lastMessage: String? = null,
     val lowBatteryFlag: Boolean = false,
-    val prefs: UserPreferences = UserPreferences(GlucoseUnit.MG_PER_DL, 70.0, 140.0),
+    val prefs: UserPreferences = UserPreferences(
+        unit = GlucoseUnit.MG_PER_DL,
+        targetLowMgDl = 70.0,
+        targetHighMgDl = 140.0,
+        autoPushMode = AutoPushMode.OFF,
+    ),
     val syncHistory: List<SyncHistoryEntry> = emptyList(),
     val annotations: Map<String, ReadingAnnotation> = emptyMap(),
+    val staged: List<StagedReading> = emptyList(),
+    val pushing: Boolean = false,
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -60,18 +74,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = Preferences(app)
     private val history = SyncHistory(app)
     private val annotationsStore = Annotations(app)
+    private val stagingStore = StagingStore(app)
+    private val pusher = StagingPusher(app)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     init {
+        // Whenever the auto-push mode changes, re-apply the WorkManager schedule.
+        viewModelScope.launch {
+            prefs.flow
+                .map { it.autoPushMode }
+                .distinctUntilChanged()
+                .collect { AutoPushScheduler.apply(getApplication(), it) }
+        }
         viewModelScope.launch {
             combine(
                 prefs.flow,
                 history.flow,
                 SyncBus.state,
                 annotationsStore.flow,
-            ) { p, h, bus, ann -> listOf(p, h, bus, ann) }.collect { tuple ->
+                stagingStore.flow,
+            ) { p, h, bus, ann, staged -> listOf(p, h, bus, ann, staged) }.collect { tuple ->
                 @Suppress("UNCHECKED_CAST")
                 val p = tuple[0] as UserPreferences
                 @Suppress("UNCHECKED_CAST")
@@ -79,6 +103,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val bus = tuple[2] as SyncBus.State
                 @Suppress("UNCHECKED_CAST")
                 val ann = tuple[3] as Map<String, ReadingAnnotation>
+                @Suppress("UNCHECKED_CAST")
+                val staged = tuple[4] as List<StagedReading>
                 _state.update {
                     it.copy(
                         prefs = p,
@@ -87,6 +113,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         lastMessage = bus.lastMessage ?: it.lastMessage,
                         lowBatteryFlag = bus.lastLowBatteryFlag,
                         annotations = ann,
+                        staged = staged,
                     )
                 }
                 if (!bus.running) refresh() // reload readings on completion
@@ -170,6 +197,43 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun clearSyncHistory() {
         viewModelScope.launch { history.clear() }
     }
+
+    // ─── Staging ───
+
+    fun updateStaged(id: String, transform: (StagedReading) -> StagedReading) {
+        viewModelScope.launch { stagingStore.update(id, transform) }
+    }
+
+    fun discardStaged(id: String) {
+        viewModelScope.launch { stagingStore.remove(listOf(id)) }
+    }
+
+    fun pushStaged(ids: Collection<String>? = null) {
+        if (_state.value.pushing) return
+        val all = _state.value.staged
+        val toPush = if (ids == null) all else all.filter { it.id in ids }
+        if (toPush.isEmpty()) return
+        _state.update { it.copy(pushing = true, lastMessage = "Pushing ${toPush.size} to Health Connect…") }
+        viewModelScope.launch {
+            pusher.push(toPush).fold(
+                onSuccess = { report ->
+                    _state.update { it.copy(pushing = false,
+                        lastMessage = "Pushed ${report.written} to Health Connect") }
+                },
+                onFailure = { t ->
+                    _state.update { it.copy(pushing = false,
+                        lastMessage = "Push failed: ${t.message}") }
+                },
+            )
+            refresh()
+        }
+    }
+
+    fun setAutoPushMode(mode: AutoPushMode) {
+        viewModelScope.launch { prefs.setAutoPushMode(mode) }
+    }
+
+    // ─── Synced (Health Connect) edits ───
 
     fun setMealRelation(record: BloodGlucoseRecord, relation: Int) {
         val clientId = record.metadata.clientRecordId ?: return

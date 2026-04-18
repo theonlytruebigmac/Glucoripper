@@ -11,7 +11,7 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.BloodGlucose
 import android.util.Log
-import com.syschimp.glucoripper.ble.GlucoseRecord
+import com.syschimp.glucoripper.data.StagedReading
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
@@ -33,55 +33,45 @@ class HealthConnectRepository(private val context: Context) {
         return granted.containsAll(requiredPermissions)
     }
 
-    /** Writes measured glucose records to Health Connect. Returns the number actually written. */
-    suspend fun writeGlucoseRecords(
-        meterAddress: String,
-        records: List<GlucoseRecord>,
-    ): Int {
-        if (records.isEmpty()) return 0
-
+    /**
+     * Push staged readings to Health Connect. Returns the number actually inserted.
+     * Re-applies the drift-correction (future-time shift) so readings from a meter
+     * with a fast RTC still land inside HC's "not in the future" constraint.
+     */
+    suspend fun pushStaged(readings: List<StagedReading>): Int {
+        if (readings.isEmpty()) return 0
         val device = Device(
             type = Device.TYPE_UNKNOWN,
             manufacturer = "Ascensia",
             model = "Contour Next One",
         )
 
-        // Contour Next One's internal RTC drifts; clamp future timestamps by subtracting
-        // the drift (max record - now) from every reading. Preserves relative timing.
         val now = Instant.now()
-        val maxRecordTime = records.maxOfOrNull { it.time }
-        val drift = if (maxRecordTime != null && maxRecordTime.isAfter(now)) {
-            Duration.between(now, maxRecordTime).plusSeconds(1)
-        } else {
-            Duration.ZERO
-        }
+        val maxTime = readings.maxOfOrNull { it.time }
+        val drift = if (maxTime != null && maxTime.isAfter(now)) {
+            Duration.between(now, maxTime).plusSeconds(1)
+        } else Duration.ZERO
         if (!drift.isZero) {
             Log.i("HealthRepo", "Meter clock ahead by ${drift.seconds}s; shifting timestamps back")
         }
 
-        val hcRecords = records.mapNotNull { r ->
-            val mgDl = r.mgPerDl ?: return@mapNotNull null
+        val hcRecords = readings.map { r ->
             BloodGlucoseRecord(
                 time = r.time.minus(drift),
                 zoneOffset = ZoneOffset.UTC,
-                level = BloodGlucose.milligramsPerDeciliter(mgDl),
-                specimenSource = mapSpecimenSource(r.sampleType),
+                level = BloodGlucose.milligramsPerDeciliter(r.mgPerDl),
+                specimenSource = r.specimenSource,
                 mealType = MealType.MEAL_TYPE_UNKNOWN,
-                relationToMeal = mapRelationToMeal(r.mealRelation),
+                relationToMeal = r.effectiveMeal,
                 metadata = Metadata(
-                    clientRecordId = "$meterAddress/${r.sequenceNumber}",
+                    clientRecordId = r.id,
                     clientRecordVersion = 1L,
                     device = device,
                     recordingMethod = Metadata.RECORDING_METHOD_AUTOMATICALLY_RECORDED,
                 ),
             )
         }
-        if (hcRecords.isEmpty()) return 0
-
-        // Re-inserting the same clientRecordId is a no-op (version not greater), so
-        // duplicate runs are safe.
-        val response = client().insertRecords(hcRecords)
-        return response.recordIdsList.size
+        return client().insertRecords(hcRecords).recordIdsList.size
     }
 
     /**
@@ -122,27 +112,4 @@ class HealthConnectRepository(private val context: Context) {
             .getOrDefault(emptyList())
     }
 
-    private fun mapRelationToMeal(meal: GlucoseRecord.MealRelation?): Int = when (meal) {
-        GlucoseRecord.MealRelation.PREPRANDIAL -> BloodGlucoseRecord.RELATION_TO_MEAL_BEFORE_MEAL
-        GlucoseRecord.MealRelation.POSTPRANDIAL -> BloodGlucoseRecord.RELATION_TO_MEAL_AFTER_MEAL
-        GlucoseRecord.MealRelation.FASTING -> BloodGlucoseRecord.RELATION_TO_MEAL_FASTING
-        GlucoseRecord.MealRelation.CASUAL -> BloodGlucoseRecord.RELATION_TO_MEAL_GENERAL
-        GlucoseRecord.MealRelation.BEDTIME, null -> BloodGlucoseRecord.RELATION_TO_MEAL_UNKNOWN
-    }
-
-    private fun mapSpecimenSource(type: GlucoseRecord.SampleType?): Int = when (type) {
-        GlucoseRecord.SampleType.CAPILLARY_WHOLE_BLOOD,
-        GlucoseRecord.SampleType.UNDETERMINED_WHOLE_BLOOD,
-        GlucoseRecord.SampleType.VENOUS_WHOLE_BLOOD,
-        GlucoseRecord.SampleType.ARTERIAL_WHOLE_BLOOD ->
-            BloodGlucoseRecord.SPECIMEN_SOURCE_WHOLE_BLOOD
-        GlucoseRecord.SampleType.CAPILLARY_PLASMA,
-        GlucoseRecord.SampleType.UNDETERMINED_PLASMA,
-        GlucoseRecord.SampleType.VENOUS_PLASMA,
-        GlucoseRecord.SampleType.ARTERIAL_PLASMA ->
-            BloodGlucoseRecord.SPECIMEN_SOURCE_PLASMA
-        GlucoseRecord.SampleType.INTERSTITIAL_FLUID ->
-            BloodGlucoseRecord.SPECIMEN_SOURCE_INTERSTITIAL_FLUID
-        else -> BloodGlucoseRecord.SPECIMEN_SOURCE_UNKNOWN
-    }
 }
