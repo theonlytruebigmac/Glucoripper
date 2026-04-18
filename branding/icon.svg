@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#00859B"/>
+      <stop offset="1" stop-color="#004F58"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0F7FA"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+
+  <!-- Droplet -->
+  <path
+    d="M256,96
+       C256,96 144,232 144,314
+       C144,376 194,426 256,426
+       C318,426 368,376 368,314
+       C368,232 256,96 256,96 Z"
+    fill="url(#drop)"/>
+
+  <!-- Soft highlight on droplet -->
+  <ellipse cx="228" cy="242" rx="26" ry="46" fill="#FFFFFF" opacity="0.35"/>
+
+  <!-- Trend line inside lower portion of droplet, in teal -->
+  <path
+    d="M196,356
+       L228,336
+       L260,348
+       L292,312
+       L324,332"
+    fill="none"
+    stroke="#006874"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+  <!-- Trend line dots at each data point -->
+  <circle cx="196" cy="356" r="6" fill="#006874"/>
+  <circle cx="228" cy="336" r="6" fill="#006874"/>
+  <circle cx="260" cy="348" r="6" fill="#006874"/>
+  <circle cx="292" cy="312" r="6" fill="#006874"/>
+  <circle cx="324" cy="332" r="6" fill="#006874"/>
+</svg>

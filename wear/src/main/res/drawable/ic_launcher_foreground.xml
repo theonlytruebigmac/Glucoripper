@@ -1,27 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Adaptive launcher foreground. Adaptive icons require the visual content to
-  sit in the central 72x72 area (out of the 108x108 canvas) so the launcher
-  can apply masks/parallax without cropping the important parts.
--->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Droplet, centred in safe zone -->
     <path
         android:fillColor="#FFFFFF"
         android:pathData="M54,28 C54,28 36,54 36,69 C36,80.6 44.1,90 54,90 C63.9,90 72,80.6 72,69 C72,54 54,28 54,28 Z" />
 
-    <!-- Soft highlight on droplet -->
     <path
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.35"
         android:pathData="M47,61 m-5,-9 a5,9 0 1,0 10,0 a5,9 0 1,0 -10,0" />
 
-    <!-- Trend line inside droplet, in teal -->
     <path
         android:pathData="M42,82 L48,78 L54,80 L60,74 L66,77"
         android:strokeColor="#006874"

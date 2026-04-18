@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="complication_label">Latest glucose</string>
+    <string name="tile_label">Glucose</string>
+    <string name="tile_description">Latest glucose reading from Glucoripper</string>
+</resources>

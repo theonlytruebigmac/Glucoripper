@@ -28,6 +28,7 @@ import com.syschimp.glucoripper.sync.StagingPusher
 import com.syschimp.glucoripper.sync.SyncBus
 import com.syschimp.glucoripper.sync.SyncForegroundService
 import com.syschimp.glucoripper.sync.SyncState
+import com.syschimp.glucoripper.wear.WearBridge
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -158,6 +159,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     meters = meters,
                     recentReadings = readings,
                 )
+            }
+            if (hcState == HealthConnectState.READY && readings.isNotEmpty()) {
+                WearBridge.push(getApplication())
             }
         }
     }

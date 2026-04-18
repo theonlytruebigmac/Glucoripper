@@ -13,6 +13,7 @@ import com.syschimp.glucoripper.data.StagedReading
 import com.syschimp.glucoripper.data.StagingStore
 import com.syschimp.glucoripper.data.SyncHistory
 import com.syschimp.glucoripper.data.SyncHistoryEntry
+import com.syschimp.glucoripper.wear.WearBridge
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
 
@@ -99,6 +100,7 @@ class SyncCoordinator(private val context: Context) {
                             if (r.skippedControlSolutions > 0) ", skipped ${r.skippedControlSolutions}" else "",
                     lowBattery = r.anyLowBattery,
                 )
+                WearBridge.push(context)
             },
             onFailure = { t ->
                 history.append(

@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 500" width="1024" height="500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00859B"/>
+      <stop offset="1" stop-color="#004F58"/>
+    </linearGradient>
+    <linearGradient id="drop" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#E0F7FA"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1024" height="500" fill="url(#bg)"/>
+
+  <!-- Faint grid overlay to evoke a chart -->
+  <g opacity="0.08" stroke="#FFFFFF" stroke-width="1">
+    <line x1="0" y1="125" x2="1024" y2="125"/>
+    <line x1="0" y1="250" x2="1024" y2="250"/>
+    <line x1="0" y1="375" x2="1024" y2="375"/>
+    <line x1="256" y1="0" x2="256" y2="500"/>
+    <line x1="512" y1="0" x2="512" y2="500"/>
+    <line x1="768" y1="0" x2="768" y2="500"/>
+  </g>
+
+  <!-- Large trend line across the graphic -->
+  <path
+    d="M80,360
+       L200,320
+       L320,340
+       L440,260
+       L560,300
+       L680,220
+       L800,260
+       L944,200"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="4"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    opacity="0.55"/>
+
+  <!-- Droplet in left third -->
+  <g transform="translate(150,80)">
+    <path
+      d="M120,40
+         C120,40 40,158 40,230
+         C40,282 76,318 120,318
+         C164,318 200,282 200,230
+         C200,158 120,40 120,40 Z"
+      fill="url(#drop)"/>
+    <ellipse cx="96" cy="184" rx="20" ry="36" fill="#FFFFFF" opacity="0.3"/>
+  </g>
+
+  <!-- Wordmark on the right -->
+  <text x="480" y="230"
+        font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="88"
+        font-weight="700"
+        fill="#FFFFFF"
+        letter-spacing="-2">Glucoripper</text>
+  <text x="480" y="280"
+        font-family="Inter, -apple-system, Helvetica, Arial, sans-serif"
+        font-size="28"
+        font-weight="500"
+        fill="#A2EEFF">Your meter, in Health Connect.</text>
+</svg>

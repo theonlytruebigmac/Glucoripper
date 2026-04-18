@@ -8,21 +8,23 @@ plugins {
 }
 
 android {
-    namespace = "com.syschimp.glucoripper"
+    namespace = "com.syschimp.glucoripper.wear"
     compileSdk = 35
 
     defaultConfig {
+        // Must match the phone applicationId so DataClient routes events between them.
         applicationId = "com.syschimp.glucoripper"
-        minSdk = 31
+        minSdk = 30
         targetSdk = 35
-        versionCode = 3
+        // Wear versionCode = phone versionCode + 1_000_000. Play Console requires unique
+        // versionCodes per applicationId; the offset keeps them in lockstep for humans
+        // while guaranteeing no collision with phone builds.
+        versionCode = 1_000_005
         versionName = "0.2.0"
     }
 
     signingConfigs {
         create("release") {
-            // Populated from env vars in CI; falls back to keystore.properties for local
-            // signed builds. If neither is present the release build stays unsigned.
             val envStore = System.getenv("KEYSTORE_FILE")
             val envPw = System.getenv("KEYSTORE_PASSWORD")
             val envAlias = System.getenv("KEY_ALIAS")
@@ -67,18 +69,17 @@ android {
 
     buildFeatures {
         compose = true
-        buildConfig = true
-    }
-
-    lint {
-        // ComponentActivity (not FragmentActivity) hosts our registerForActivityResult
-        // calls — the fragment version check doesn't apply.
-        disable += "InvalidFragmentVersionForActivityResult"
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/kotlin")
         }
     }
 }
@@ -93,23 +94,28 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.lifecycle.service)
     implementation(libs.androidx.activity.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.compose.material3)
-    implementation(libs.androidx.compose.material.icons)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.androidx.health.connect)
-    implementation(libs.androidx.work.runtime)
-    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.wear.compose.material)
+    implementation(libs.androidx.wear.compose.foundation)
+    implementation(libs.androidx.wear.compose.navigation)
 
     implementation(libs.play.services.wearable)
+    implementation(libs.androidx.datastore.preferences)
+
+    implementation(libs.androidx.wear.tiles)
+    implementation(libs.androidx.wear.tiles.material)
+    implementation(libs.androidx.wear.protolayout)
+    implementation(libs.androidx.wear.protolayout.material)
+    implementation(libs.androidx.wear.protolayout.expression)
+    implementation(libs.androidx.wear.complications)
+    implementation(libs.androidx.concurrent.futures)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.play.services)
