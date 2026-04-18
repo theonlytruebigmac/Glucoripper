@@ -10,7 +10,7 @@ it goes, and what it does not do.
 ## Who we are
 
 Glucoripper is developed and maintained by **ChimpSec** (Zachery Frazier,
-Louisville, KY, USA). Contact: **znfrazier@gmail.com**.
+Louisville, KY, USA). Contact: **admin@chimpsec.com**.
 
 ## Data the app processes
 
@@ -104,4 +104,4 @@ The history of changes is visible via git.
 
 ## Contact
 
-For questions about this policy: **znfrazier@gmail.com**.
+For questions about this policy: **admin@chimpsec.com**.
