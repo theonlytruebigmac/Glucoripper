@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -34,8 +37,8 @@ android {
                     keyPassword = envKeyPw
                 }
                 localPropsFile.exists() -> {
-                    val props = java.util.Properties().apply {
-                        localPropsFile.inputStream().use(::load)
+                    val props = Properties().apply {
+                        localPropsFile.inputStream().use { load(it) }
                     }
                     storeFile = rootProject.file(props.getProperty("storeFile"))
                     storePassword = props.getProperty("storePassword")
@@ -62,25 +65,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    sourceSets {
-        named("main") {
-            java.srcDirs("src/main/kotlin")
-        }
     }
 
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
