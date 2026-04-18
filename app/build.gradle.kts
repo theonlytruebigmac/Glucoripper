@@ -16,10 +16,44 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        create("release") {
+            // Populated from env vars in CI; falls back to keystore.properties for local
+            // signed builds. If neither is present the release build stays unsigned.
+            val envStore = System.getenv("KEYSTORE_FILE")
+            val envPw = System.getenv("KEYSTORE_PASSWORD")
+            val envAlias = System.getenv("KEY_ALIAS")
+            val envKeyPw = System.getenv("KEY_PASSWORD")
+            val localPropsFile = rootProject.file("keystore.properties")
+
+            when {
+                envStore != null && envPw != null && envAlias != null && envKeyPw != null -> {
+                    storeFile = file(envStore)
+                    storePassword = envPw
+                    keyAlias = envAlias
+                    keyPassword = envKeyPw
+                }
+                localPropsFile.exists() -> {
+                    val props = java.util.Properties().apply {
+                        localPropsFile.inputStream().use(::load)
+                    }
+                    storeFile = rootProject.file(props.getProperty("storeFile"))
+                    storePassword = props.getProperty("storePassword")
+                    keyAlias = props.getProperty("keyAlias")
+                    keyPassword = props.getProperty("keyPassword")
+                }
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            val releaseSigning = signingConfigs.getByName("release")
+            if (releaseSigning.storeFile != null) {
+                signingConfig = releaseSigning
+            }
         }
     }
 
