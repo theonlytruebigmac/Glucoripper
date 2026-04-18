@@ -1,0 +1,33 @@
+# Gradle
+.gradle/
+build/
+/app/build/
+/build/
+
+# Kotlin compiler cache (Kotlin 2.0+)
+.kotlin/
+
+# IDE
+*.iml
+/.idea/
+.idea/
+
+# Android
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Local config — contains SDK path, must stay per-machine
+local.properties
+
+# Signing — never commit keys or keystore passwords
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+
+# OS
+.DS_Store
+Thumbs.db

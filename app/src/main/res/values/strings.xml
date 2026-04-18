@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Glucoripper</string>
+
+    <string name="notif_channel_sync">Glucose sync</string>
+    <string name="notif_syncing">Syncing glucose readings…</string>
+    <string name="notif_sync_done">Glucose sync complete</string>
+    <string name="notif_sync_done_body">Wrote %1$d new reading(s) to Health Connect</string>
+    <string name="notif_sync_failed">Glucose sync failed</string>
+</resources>
