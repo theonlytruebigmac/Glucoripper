@@ -23,6 +23,13 @@ class GlucoseStore(private val context: Context) {
     private val kUnit = stringPreferencesKey("unit")
     private val kWinT = stringPreferencesKey("win_times")
     private val kWinV = stringPreferencesKey("win_values")
+    private val kWinM = stringPreferencesKey("win_meals")
+    private val kFastLow = doublePreferencesKey("fasting_low")
+    private val kFastHigh = doublePreferencesKey("fasting_high")
+    private val kPreLow = doublePreferencesKey("pre_meal_low")
+    private val kPreHigh = doublePreferencesKey("pre_meal_high")
+    private val kPostLow = doublePreferencesKey("post_meal_low")
+    private val kPostHigh = doublePreferencesKey("post_meal_high")
     private val kLastSync = longPreferencesKey("last_sync")
 
     val flow: Flow<GlucosePayload> = context.glucoseDataStore.data.map { p ->
@@ -38,6 +45,13 @@ class GlucoseStore(private val context: Context) {
             unit = unit,
             windowTimesMillis = p[kWinT].decodeLongs(),
             windowMgDls = p[kWinV].decodeFloats(),
+            windowMealRelations = p[kWinM].decodeInts(),
+            fastingLowMgDl = p[kFastLow] ?: 80.0,
+            fastingHighMgDl = p[kFastHigh] ?: 130.0,
+            preMealLowMgDl = p[kPreLow] ?: 80.0,
+            preMealHighMgDl = p[kPreHigh] ?: 130.0,
+            postMealLowMgDl = p[kPostLow] ?: 80.0,
+            postMealHighMgDl = p[kPostHigh] ?: 180.0,
             lastSyncMillis = p[kLastSync] ?: 0L,
         )
     }
@@ -52,6 +66,13 @@ class GlucoseStore(private val context: Context) {
             p[kUnit] = payload.unit.name
             p[kWinT] = payload.windowTimesMillis.joinToString(",")
             p[kWinV] = payload.windowMgDls.joinToString(",")
+            p[kWinM] = payload.windowMealRelations.joinToString(",")
+            p[kFastLow] = payload.fastingLowMgDl
+            p[kFastHigh] = payload.fastingHighMgDl
+            p[kPreLow] = payload.preMealLowMgDl
+            p[kPreHigh] = payload.preMealHighMgDl
+            p[kPostLow] = payload.postMealLowMgDl
+            p[kPostHigh] = payload.postMealHighMgDl
             p[kLastSync] = payload.lastSyncMillis
         }
     }
@@ -64,3 +85,7 @@ private fun String?.decodeLongs(): LongArray =
 private fun String?.decodeFloats(): FloatArray =
     if (isNullOrBlank()) FloatArray(0)
     else split(",").mapNotNull { it.trim().toFloatOrNull() }.toFloatArray()
+
+private fun String?.decodeInts(): IntArray =
+    if (isNullOrBlank()) IntArray(0)
+    else split(",").mapNotNull { it.trim().toIntOrNull() }.toIntArray()

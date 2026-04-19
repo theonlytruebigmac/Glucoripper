@@ -321,6 +321,7 @@ fun DashboardScreen(
             reading = r,
             unit = state.prefs.unit,
             annotation = ann,
+            prefs = state.prefs,
             onDismiss = { selectedReading = null },
             onSaveMeal = { onSetMealRelation(r, it) },
             onSaveFeeling = { onSetFeeling(r.metadata.clientRecordId, it) },

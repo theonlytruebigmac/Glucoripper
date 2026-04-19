@@ -48,15 +48,9 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
         else -> null
     }
 
-    private fun previewPayload(): GlucosePayload = GlucosePayload(
+    private fun previewPayload(): GlucosePayload = GlucosePayload.Empty.copy(
         latestTimeMillis = Instant.now().toEpochMilli(),
         latestMgDl = 118.0,
-        latestMealRelation = 0,
-        targetLowMgDl = 70.0,
-        targetHighMgDl = 140.0,
-        unit = GlucoseUnit.MG_PER_DL,
-        windowTimesMillis = LongArray(0),
-        windowMgDls = FloatArray(0),
         lastSyncMillis = Instant.now().toEpochMilli(),
     )
 

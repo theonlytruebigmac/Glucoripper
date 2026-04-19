@@ -25,8 +25,8 @@ object WearBridge {
 
     private const val TAG = "WearBridge"
     private const val PATH = "/glucose/latest"
-    private const val WINDOW_HOURS = 24L
-    private const val MAX_WINDOW_POINTS = 200
+    private const val WINDOW_HOURS = 24L * 7L
+    private const val MAX_WINDOW_POINTS = 500
 
     // Keys must match com.syschimp.glucoripper.wear.data.WearPaths on the watch.
     private const val KEY_TIME = "time"
@@ -37,7 +37,14 @@ object WearBridge {
     private const val KEY_UNIT = "unit"
     private const val KEY_WIN_TIMES = "winTimes"
     private const val KEY_WIN_VALUES = "winMgDls"
+    private const val KEY_WIN_MEALS = "winMeals"
     private const val KEY_LAST_SYNC = "lastSync"
+    private const val KEY_FASTING_LOW = "fastingLow"
+    private const val KEY_FASTING_HIGH = "fastingHigh"
+    private const val KEY_PRE_MEAL_LOW = "preMealLow"
+    private const val KEY_PRE_MEAL_HIGH = "preMealHigh"
+    private const val KEY_POST_MEAL_LOW = "postMealLow"
+    private const val KEY_POST_MEAL_HIGH = "postMealHigh"
 
     suspend fun push(context: Context) {
         runCatching { pushInternal(context) }
@@ -73,6 +80,16 @@ object WearBridge {
                 KEY_WIN_VALUES,
                 window.map { it.level.inMilligramsPerDeciliter.toFloat() }.toFloatArray(),
             )
+            dataMap.putIntegerArrayList(
+                KEY_WIN_MEALS,
+                ArrayList(window.map { it.relationToMeal }),
+            )
+            dataMap.putDouble(KEY_FASTING_LOW, prefs.fastingLowMgDl)
+            dataMap.putDouble(KEY_FASTING_HIGH, prefs.fastingHighMgDl)
+            dataMap.putDouble(KEY_PRE_MEAL_LOW, prefs.preMealLowMgDl)
+            dataMap.putDouble(KEY_PRE_MEAL_HIGH, prefs.preMealHighMgDl)
+            dataMap.putDouble(KEY_POST_MEAL_LOW, prefs.postMealLowMgDl)
+            dataMap.putDouble(KEY_POST_MEAL_HIGH, prefs.postMealHighMgDl)
             dataMap.putLong(KEY_LAST_SYNC, System.currentTimeMillis())
         }
 

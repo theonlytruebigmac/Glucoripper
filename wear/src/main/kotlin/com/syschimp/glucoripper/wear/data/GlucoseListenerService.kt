@@ -39,6 +39,14 @@ class GlucoseListenerService : WearableListenerService() {
                 }.getOrDefault(GlucoseUnit.MG_PER_DL),
                 windowTimesMillis = dm.getLongArray(WearPaths.KEY_WIN_TIMES) ?: LongArray(0),
                 windowMgDls = dm.getFloatArray(WearPaths.KEY_WIN_VALUES) ?: FloatArray(0),
+                windowMealRelations = dm.getIntegerArrayList(WearPaths.KEY_WIN_MEALS)
+                    ?.toIntArray() ?: IntArray(0),
+                fastingLowMgDl = dm.getDouble(WearPaths.KEY_FASTING_LOW, 80.0),
+                fastingHighMgDl = dm.getDouble(WearPaths.KEY_FASTING_HIGH, 130.0),
+                preMealLowMgDl = dm.getDouble(WearPaths.KEY_PRE_MEAL_LOW, 80.0),
+                preMealHighMgDl = dm.getDouble(WearPaths.KEY_PRE_MEAL_HIGH, 130.0),
+                postMealLowMgDl = dm.getDouble(WearPaths.KEY_POST_MEAL_LOW, 80.0),
+                postMealHighMgDl = dm.getDouble(WearPaths.KEY_POST_MEAL_HIGH, 180.0),
                 lastSyncMillis = dm.getLong(WearPaths.KEY_LAST_SYNC),
             )
             scope.launch {

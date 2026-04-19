@@ -8,12 +8,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseStore
-import com.syschimp.glucoripper.wear.ui.WearMainScreen
-import kotlinx.coroutines.flow.stateIn
+import com.syschimp.glucoripper.wear.ui.WearHomePager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 
 class MainActivity : ComponentActivity() {
 
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             val state by remember {
                 store.flow.stateIn(scope, SharingStarted.Eagerly, GlucosePayload.Empty)
             }.collectAsState()
-            WearMainScreen(state)
+            WearHomePager(state)
         }
     }
 }

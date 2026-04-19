@@ -41,6 +41,7 @@ import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.ReadingAnnotation
+import com.syschimp.glucoripper.data.targetRangeFor
 import com.syschimp.glucoripper.data.StagedReading
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
@@ -55,6 +56,7 @@ fun ReadingDetailSheet(
     reading: BloodGlucoseRecord,
     unit: GlucoseUnit,
     annotation: ReadingAnnotation?,
+    prefs: com.syschimp.glucoripper.data.UserPreferences,
     onDismiss: () -> Unit,
     onSaveMeal: (Int) -> Unit,
     onSaveFeeling: (Feeling?) -> Unit,
@@ -64,8 +66,9 @@ fun ReadingDetailSheet(
     var noteText by remember(annotation?.note) { mutableStateOf(annotation?.note.orEmpty()) }
 
     val mgDl = reading.level.inMilligramsPerDeciliter
+    val range = prefs.targetRangeFor(effectiveMeal)
     val bandColor = com.syschimp.glucoripper.ui.components.bandColor(
-        mgDl, 70.0, 140.0,
+        mgDl, range.first, range.second, prefs.warningBufferMgDl,
     )
 
     ModalBottomSheet(
