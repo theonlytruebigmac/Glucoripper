@@ -122,8 +122,7 @@ fun HistoryScreen(
                             reading = r,
                             annotation = ann,
                             unit = state.prefs.unit,
-                            lowMgDl = lowTarget,
-                            highMgDl = highTarget,
+                            prefs = state.prefs,
                             onClick = { selectedReading = r },
                         )
                     }

@@ -57,11 +57,13 @@ fun RingGauge(
     unit: GlucoseUnit,
     lowMgDl: Double,
     highMgDl: Double,
+    warningBuffer: Double = 0.0,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {},
 ) {
     val mgDl = latest?.level?.inMilligramsPerDeciliter
-    val color = mgDl?.let { bandColor(it, lowMgDl, highMgDl) } ?: MaterialTheme.colorScheme.outline
+    val color = mgDl?.let { bandColor(it, lowMgDl, highMgDl, warningBuffer) }
+        ?: MaterialTheme.colorScheme.outline
 
     // Gauge maps mg/dL values to arc position. Fixed visual range keeps the
     // target band visually centered regardless of current reading.
@@ -120,13 +122,18 @@ fun RingGauge(
 
             // Colored zone segments. Bounds are defined in mg/dL, then converted
             // to arc fractions so the band widths scale with the user's target.
-            val segments = listOf(
-                Triple(gaugeMin, (lowMgDl - 10).toFloat(), GlucoseLow),
-                Triple((lowMgDl - 10).toFloat(), lowMgDl.toFloat(), GlucoseElevated),
-                Triple(lowMgDl.toFloat(), highMgDl.toFloat(), GlucoseInRange),
-                Triple(highMgDl.toFloat(), (highMgDl + 40).toFloat(), GlucoseElevated),
-                Triple((highMgDl + 40).toFloat(), gaugeMax, GlucoseHigh),
-            )
+            // Zones mirror the user's target range. When warningBuffer > 0 we
+            // show amber cushions on either side of the green band.
+            val buf = warningBuffer.toFloat()
+            val lowEdge = (lowMgDl.toFloat() - buf).coerceAtLeast(gaugeMin)
+            val highEdge = (highMgDl.toFloat() + buf).coerceAtMost(gaugeMax)
+            val segments = buildList {
+                add(Triple(gaugeMin, lowEdge, GlucoseLow))
+                if (buf > 0f) add(Triple(lowEdge, lowMgDl.toFloat(), GlucoseElevated))
+                add(Triple(lowMgDl.toFloat(), highMgDl.toFloat(), GlucoseInRange))
+                if (buf > 0f) add(Triple(highMgDl.toFloat(), highEdge, GlucoseElevated))
+                add(Triple(highEdge, gaugeMax, GlucoseHigh))
+            }
             segments.forEach { (a, b, col) ->
                 val f0 = fractionOf(a)
                 val f1 = fractionOf(b)

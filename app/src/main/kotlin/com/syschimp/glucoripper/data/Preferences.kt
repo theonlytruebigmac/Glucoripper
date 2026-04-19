@@ -45,12 +45,22 @@ enum class AutoPushMode(val label: String, val periodicHours: Int?) {
 
 data class UserPreferences(
     val unit: GlucoseUnit,
+    /** General / unknown-context fallback range. */
     val targetLowMgDl: Double,
     val targetHighMgDl: Double,
     val autoPushMode: AutoPushMode,
     val chartMinMgDl: Double = 40.0,
     val chartMaxMgDl: Double = 200.0,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    // ADA-aligned defaults; user-adjustable per their condition.
+    val fastingLowMgDl: Double = 80.0,
+    val fastingHighMgDl: Double = 130.0,
+    val preMealLowMgDl: Double = 80.0,
+    val preMealHighMgDl: Double = 130.0,
+    val postMealLowMgDl: Double = 80.0,
+    val postMealHighMgDl: Double = 180.0,
+    /** Amber "warning" cushion around each target range; set to 0 for strict red/green. */
+    val warningBufferMgDl: Double = 0.0,
 )
 
 class Preferences(private val context: Context) {
@@ -61,6 +71,13 @@ class Preferences(private val context: Context) {
     private val chartMinKey = doublePreferencesKey("chart_min_mgdl")
     private val chartMaxKey = doublePreferencesKey("chart_max_mgdl")
     private val themeKey = stringPreferencesKey("theme_mode")
+    private val fastingLowKey = doublePreferencesKey("fasting_low_mgdl")
+    private val fastingHighKey = doublePreferencesKey("fasting_high_mgdl")
+    private val preMealLowKey = doublePreferencesKey("pre_meal_low_mgdl")
+    private val preMealHighKey = doublePreferencesKey("pre_meal_high_mgdl")
+    private val postMealLowKey = doublePreferencesKey("post_meal_low_mgdl")
+    private val postMealHighKey = doublePreferencesKey("post_meal_high_mgdl")
+    private val warningBufferKey = doublePreferencesKey("warning_buffer_mgdl")
 
     val flow: Flow<UserPreferences> = context.prefsStore.data.map { p ->
         UserPreferences(
@@ -71,7 +88,39 @@ class Preferences(private val context: Context) {
             chartMinMgDl = p[chartMinKey] ?: 40.0,
             chartMaxMgDl = p[chartMaxKey] ?: 200.0,
             themeMode = ThemeMode.fromName(p[themeKey]),
+            fastingLowMgDl = p[fastingLowKey] ?: 80.0,
+            fastingHighMgDl = p[fastingHighKey] ?: 130.0,
+            preMealLowMgDl = p[preMealLowKey] ?: 80.0,
+            preMealHighMgDl = p[preMealHighKey] ?: 130.0,
+            postMealLowMgDl = p[postMealLowKey] ?: 80.0,
+            postMealHighMgDl = p[postMealHighKey] ?: 180.0,
+            warningBufferMgDl = p[warningBufferKey] ?: 0.0,
         )
+    }
+
+    suspend fun setWarningBuffer(buffer: Double) {
+        context.prefsStore.edit {
+            it[warningBufferKey] = buffer.coerceIn(0.0, 50.0)
+        }
+    }
+
+    suspend fun setFastingRange(low: Double, high: Double) {
+        context.prefsStore.edit {
+            it[fastingLowKey] = low.coerceIn(40.0, 200.0)
+            it[fastingHighKey] = high.coerceIn(80.0, 300.0)
+        }
+    }
+    suspend fun setPreMealRange(low: Double, high: Double) {
+        context.prefsStore.edit {
+            it[preMealLowKey] = low.coerceIn(40.0, 200.0)
+            it[preMealHighKey] = high.coerceIn(80.0, 300.0)
+        }
+    }
+    suspend fun setPostMealRange(low: Double, high: Double) {
+        context.prefsStore.edit {
+            it[postMealLowKey] = low.coerceIn(40.0, 250.0)
+            it[postMealHighKey] = high.coerceIn(100.0, 400.0)
+        }
     }
 
     suspend fun setThemeMode(mode: ThemeMode) {
@@ -99,6 +148,21 @@ class Preferences(private val context: Context) {
     suspend fun setAutoPushMode(mode: AutoPushMode) {
         context.prefsStore.edit { it[autoPushKey] = mode.name }
     }
+}
+
+/**
+ * Returns the low/high mg/dL target band for a reading based on its meal
+ * relation. Unknown/general readings fall back to the general [targetLowMgDl]
+ * and [targetHighMgDl] pair.
+ */
+fun UserPreferences.targetRangeFor(mealRelation: Int): Pair<Double, Double> = when (mealRelation) {
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_FASTING ->
+        fastingLowMgDl to fastingHighMgDl
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_BEFORE_MEAL ->
+        preMealLowMgDl to preMealHighMgDl
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_AFTER_MEAL ->
+        postMealLowMgDl to postMealHighMgDl
+    else -> targetLowMgDl to targetHighMgDl
 }
 
 /** 1 mmol/L of glucose ≈ 18.0156 mg/dL. */

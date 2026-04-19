@@ -65,6 +65,10 @@ fun SettingsScreen(
     state: UiState,
     onSaveUnit: (GlucoseUnit) -> Unit,
     onSaveRange: (Double, Double) -> Unit,
+    onSaveFastingRange: (Double, Double) -> Unit,
+    onSavePreMealRange: (Double, Double) -> Unit,
+    onSavePostMealRange: (Double, Double) -> Unit,
+    onSaveWarningBuffer: (Double) -> Unit,
     onSaveChartRange: (Double, Double) -> Unit,
     onSaveThemeMode: (ThemeMode) -> Unit,
     onSaveAutoPushMode: (AutoPushMode) -> Unit,
@@ -106,9 +110,45 @@ fun SettingsScreen(
             }
             item {
                 TargetRangeCard(
+                    title = "General Target",
+                    subtitle = "Used when no meal context is recorded.",
                     initialLow = state.prefs.targetLowMgDl,
                     initialHigh = state.prefs.targetHighMgDl,
                     onSaveRange = onSaveRange,
+                )
+            }
+            item {
+                TargetRangeCard(
+                    title = "Fasting Target",
+                    subtitle = "First reading of the day, before eating.",
+                    initialLow = state.prefs.fastingLowMgDl,
+                    initialHigh = state.prefs.fastingHighMgDl,
+                    onSaveRange = onSaveFastingRange,
+                )
+            }
+            item {
+                TargetRangeCard(
+                    title = "Before Meal Target",
+                    subtitle = "Pre-prandial checks.",
+                    initialLow = state.prefs.preMealLowMgDl,
+                    initialHigh = state.prefs.preMealHighMgDl,
+                    onSaveRange = onSavePreMealRange,
+                )
+            }
+            item {
+                TargetRangeCard(
+                    title = "After Meal Target",
+                    subtitle = "1–2 hours after eating.",
+                    initialLow = state.prefs.postMealLowMgDl,
+                    initialHigh = state.prefs.postMealHighMgDl,
+                    onSaveRange = onSavePostMealRange,
+                    sliderMax = 300f,
+                )
+            }
+            item {
+                WarningBufferCard(
+                    initial = state.prefs.warningBufferMgDl,
+                    onSave = onSaveWarningBuffer,
                 )
             }
             item {
@@ -239,9 +279,13 @@ private fun UnitTile(
 
 @Composable
 private fun TargetRangeCard(
+    title: String,
+    subtitle: String,
     initialLow: Double,
     initialHigh: Double,
     onSaveRange: (Double, Double) -> Unit,
+    sliderMin: Float = 40f,
+    sliderMax: Float = 250f,
 ) {
     var range by remember(initialLow, initialHigh) {
         mutableStateOf(initialLow.toFloat()..initialHigh.toFloat())
@@ -249,12 +293,12 @@ private fun TargetRangeCard(
 
     SettingsCard {
         Text(
-            "Target Range (mg/dL)",
+            "$title (mg/dL)",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            "Readings outside this band are flagged as low or high.",
+            subtitle,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -271,16 +315,63 @@ private fun TargetRangeCard(
             onValueChangeFinished = {
                 onSaveRange(range.start.toDouble(), range.endInclusive.toDouble())
             },
-            valueRange = 40f..300f,
-            steps = (300 - 40) / 5 - 1,
+            valueRange = sliderMin..sliderMax,
+            steps = ((sliderMax - sliderMin) / 5).toInt() - 1,
         )
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("40", style = MaterialTheme.typography.labelSmall,
+            Text(sliderMin.toInt().toString(), style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("300", style = MaterialTheme.typography.labelSmall,
+            Text(sliderMax.toInt().toString(), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun WarningBufferCard(
+    initial: Double,
+    onSave: (Double) -> Unit,
+) {
+    var value by remember(initial) { mutableStateOf(initial.toFloat()) }
+    SettingsCard {
+        Text(
+            "Warning Buffer (mg/dL)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Amber cushion around each target. Readings inside the buffer show as 'warning' instead of high/low. Set to 0 for strict red/green.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            ValuePill(label = "±", value = value.toInt())
+            Text(
+                if (value.toInt() == 0) "Off" else "Applied both sides of range",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = { value = it },
+            onValueChangeFinished = { onSave(value.toDouble()) },
+            valueRange = 0f..50f,
+            steps = 9,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("0", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("50", style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -506,9 +597,13 @@ private fun SyncHistorySheet(
     onDismiss: () -> Unit,
     onClear: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 20.dp),
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Row(
                 Modifier.fillMaxWidth(),
@@ -522,47 +617,74 @@ private fun SyncHistorySheet(
                 )
                 TextButton(onClick = onClear) { Text("Clear") }
             }
-            Spacer(Modifier.height(8.dp))
             if (entries.isEmpty()) {
-                Text(
-                    "Nothing synced yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                entries.forEach { e ->
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            if (e.success) Icons.Default.CheckCircle else Icons.Default.Error,
-                            contentDescription = null,
-                            tint = if (e.success) Color(0xFF30A46C) else Color(0xFFE5484D),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                historyFormatter.format(
-                                    Instant.ofEpochMilli(e.timestampMillis)
-                                        .atZone(ZoneId.systemDefault())
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                if (e.success) {
-                                    "Pulled ${e.pulled}, wrote ${e.written}" +
-                                            if (e.skippedControl > 0) ", skipped ${e.skippedControl}" else ""
-                                } else (e.message ?: "Failed"),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                ) {
+                    Text(
+                        "Nothing synced yet.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(16.dp),
                     )
                 }
+            } else {
+                entries.forEach { e -> SyncHistoryRow(e) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncHistoryRow(entry: SyncHistoryEntry) {
+    val success = entry.success
+    val color = if (success) Color(0xFF30A46C) else Color(0xFFE5484D)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    if (success) Icons.Default.CheckCircle else Icons.Default.Error,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    historyFormatter.format(
+                        Instant.ofEpochMilli(entry.timestampMillis)
+                            .atZone(ZoneId.systemDefault())
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    if (success) {
+                        "Pulled ${entry.pulled}, wrote ${entry.written}" +
+                                if (entry.skippedControl > 0) ", skipped ${entry.skippedControl}" else ""
+                    } else (entry.message ?: "Failed"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

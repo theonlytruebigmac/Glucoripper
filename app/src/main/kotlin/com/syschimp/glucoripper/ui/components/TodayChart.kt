@@ -70,6 +70,11 @@ fun TodayChart(
     windowHours: Long = 24,
     yMinMgDl: Double = 40.0,
     yMaxMgDl: Double = 200.0,
+    warningBuffer: Double = 0.0,
+    /** Per-reading dot color — lets callers pass context-aware colors. */
+    colorForReading: (BloodGlucoseRecord) -> androidx.compose.ui.graphics.Color = { r ->
+        bandColor(r.level.inMilligramsPerDeciliter, lowMgDl, highMgDl, warningBuffer)
+    },
 ) {
     val now = Instant.now()
     val windowStart = now.minus(Duration.ofHours(windowHours))
@@ -103,16 +108,19 @@ fun TodayChart(
     val axisColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-    // Horizontal bands (mirrors gauge zoning): red/yellow/green/yellow/red
-    // around the user's target. Soft alpha keeps the line readable on top.
+    // Horizontal bands mirror the user's target range, with amber cushions
+    // when the warning buffer is non-zero.
     val bandAlpha = 0.18f
-    val bands = listOf(
-        Triple(yMin, (lowMgDl - 10).toFloat(), GlucoseLow.copy(alpha = bandAlpha)),
-        Triple((lowMgDl - 10).toFloat(), lowMgDl.toFloat(), GlucoseElevated.copy(alpha = bandAlpha)),
-        Triple(lowMgDl.toFloat(), highMgDl.toFloat(), GlucoseInRange.copy(alpha = bandAlpha)),
-        Triple(highMgDl.toFloat(), (highMgDl + 40).toFloat(), GlucoseElevated.copy(alpha = bandAlpha)),
-        Triple((highMgDl + 40).toFloat(), yMax, GlucoseHigh.copy(alpha = bandAlpha)),
-    )
+    val buf = warningBuffer.toFloat()
+    val lowEdge = (lowMgDl.toFloat() - buf).coerceAtLeast(yMin)
+    val highEdge = (highMgDl.toFloat() + buf).coerceAtMost(yMax)
+    val bands = buildList {
+        add(Triple(yMin, lowEdge, GlucoseLow.copy(alpha = bandAlpha)))
+        if (buf > 0f) add(Triple(lowEdge, lowMgDl.toFloat(), GlucoseElevated.copy(alpha = bandAlpha)))
+        add(Triple(lowMgDl.toFloat(), highMgDl.toFloat(), GlucoseInRange.copy(alpha = bandAlpha)))
+        if (buf > 0f) add(Triple(highMgDl.toFloat(), highEdge, GlucoseElevated.copy(alpha = bandAlpha)))
+        add(Triple(highEdge, yMax, GlucoseHigh.copy(alpha = bandAlpha)))
+    }
     val bandEdgeColor = GlucoseInRange.copy(alpha = 0.45f)
 
     // Top strip is reserved for event pills so they never overlap the line.
@@ -202,11 +210,14 @@ fun TodayChart(
                         )
                     }
 
-                    // Reading dots — subtle, match line color
+                    // Reading dots — colored per reading's contextual range
                     inWindow.forEach { p ->
                         val x = xFor(p.time)
                         val y = yFor(p.level.inMilligramsPerDeciliter.toFloat())
-                        drawCircle(color = primary, radius = 2.5.dp.toPx(), center = Offset(x, y))
+                        val c = colorForReading(p)
+                        drawCircle(color = c.copy(alpha = 0.25f), radius = 6.dp.toPx(),
+                            center = Offset(x, y))
+                        drawCircle(color = c, radius = 3.5.dp.toPx(), center = Offset(x, y))
                     }
                 }
 

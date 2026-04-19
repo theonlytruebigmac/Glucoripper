@@ -63,6 +63,7 @@ import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.HealthEvent
 import com.syschimp.glucoripper.data.StagedReading
+import com.syschimp.glucoripper.data.targetRangeFor
 import com.syschimp.glucoripper.ui.HealthConnectState
 import com.syschimp.glucoripper.ui.LogEventSheet
 import com.syschimp.glucoripper.ui.PairedMeter
@@ -189,23 +190,36 @@ fun DashboardScreen(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(0.dp),
                             ) {
+                                // Gauge + chip reflect the latest reading's
+                                // context-appropriate target range (fasting /
+                                // pre-meal / post-meal / general).
+                                val latestRelation = latest?.let { rec ->
+                                    val ann = rec.metadata.clientRecordId
+                                        ?.let(state.annotations::get)
+                                    ann?.mealOverride ?: rec.relationToMeal
+                                } ?: -1
+                                val latestRange = state.prefs.targetRangeFor(latestRelation)
+                                val latestLow = latestRange.first
+                                val latestHigh = latestRange.second
                                 Box(contentAlignment = Alignment.Center) {
                                     RingGauge(
                                         latest = latest,
                                         previous = previous,
                                         unit = state.prefs.unit,
-                                        lowMgDl = state.prefs.targetLowMgDl,
-                                        highMgDl = state.prefs.targetHighMgDl,
+                                        lowMgDl = latestLow,
+                                        highMgDl = latestHigh,
+                                        warningBuffer = state.prefs.warningBufferMgDl,
                                         onClick = {
                                             latest?.let { selectedReading = it }
                                         },
                                     )
                                 }
                                 TargetZoneChip(
-                                    lowMgDl = state.prefs.targetLowMgDl,
-                                    highMgDl = state.prefs.targetHighMgDl,
+                                    lowMgDl = latestLow,
+                                    highMgDl = latestHigh,
                                     unit = state.prefs.unit,
                                     current = latest?.level?.inMilligramsPerDeciliter,
+                                    contextLabel = contextLabelFor(latestRelation),
                                 )
                                 TodayChart(
                                     readings = state.recentReadings,
@@ -219,6 +233,19 @@ fun DashboardScreen(
                                     modifier = Modifier.padding(horizontal = 8.dp),
                                     yMinMgDl = state.prefs.chartMinMgDl,
                                     yMaxMgDl = state.prefs.chartMaxMgDl,
+                                    warningBuffer = state.prefs.warningBufferMgDl,
+                                    colorForReading = { r ->
+                                        val ann = r.metadata.clientRecordId
+                                            ?.let(state.annotations::get)
+                                        val meal = ann?.mealOverride ?: r.relationToMeal
+                                        val range = state.prefs.targetRangeFor(meal)
+                                        bandColor(
+                                            r.level.inMilligramsPerDeciliter,
+                                            range.first,
+                                            range.second,
+                                            state.prefs.warningBufferMgDl,
+                                        )
+                                    },
                                 )
                             }
                         }
@@ -262,8 +289,7 @@ fun DashboardScreen(
                                 reading = r,
                                 annotation = ann,
                                 unit = state.prefs.unit,
-                                lowMgDl = state.prefs.targetLowMgDl,
-                                highMgDl = state.prefs.targetHighMgDl,
+                                prefs = state.prefs,
                                 onClick = { selectedReading = r },
                             )
                         }
@@ -346,6 +372,7 @@ private fun TargetZoneChip(
     highMgDl: Double,
     unit: GlucoseUnit,
     current: Double?,
+    contextLabel: String,
 ) {
     val color = current?.let { bandColor(it, lowMgDl, highMgDl) }
         ?: MaterialTheme.colorScheme.outline
@@ -360,13 +387,20 @@ private fun TargetZoneChip(
             Dot(color = color, size = 8.dp)
             Spacer(Modifier.width(8.dp))
             Text(
-                "Target Zone (${formatGlucose(lowMgDl, unit)}–${formatGlucose(highMgDl, unit)} ${unitLabel(unit)})",
+                "$contextLabel (${formatGlucose(lowMgDl, unit)}–${formatGlucose(highMgDl, unit)} ${unitLabel(unit)})",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
             )
         }
     }
+}
+
+private fun contextLabelFor(mealRelation: Int): String = when (mealRelation) {
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_FASTING -> "Fasting Target"
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_BEFORE_MEAL -> "Pre-meal Target"
+    androidx.health.connect.client.records.BloodGlucoseRecord.RELATION_TO_MEAL_AFTER_MEAL -> "Post-meal Target"
+    else -> "Target Zone"
 }
 
 // ─────────── Quick stats ───────────

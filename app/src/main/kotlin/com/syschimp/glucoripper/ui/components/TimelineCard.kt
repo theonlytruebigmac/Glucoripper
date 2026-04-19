@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.ReadingAnnotation
+import com.syschimp.glucoripper.data.UserPreferences
+import com.syschimp.glucoripper.data.targetRangeFor
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
 
@@ -32,14 +34,14 @@ fun TimelineCard(
     reading: BloodGlucoseRecord,
     annotation: ReadingAnnotation?,
     unit: GlucoseUnit,
-    lowMgDl: Double,
-    highMgDl: Double,
+    prefs: UserPreferences,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val mgDl = reading.level.inMilligramsPerDeciliter
-    val color = bandColor(mgDl, lowMgDl, highMgDl)
     val effectiveMeal = annotation?.mealOverride ?: reading.relationToMeal
+    val (lowMgDl, highMgDl) = prefs.targetRangeFor(effectiveMeal)
+    val color = bandColor(mgDl, lowMgDl, highMgDl, prefs.warningBufferMgDl)
     val subtitle = listOfNotNull(
         relationShort(effectiveMeal),
         annotation?.feeling?.emoji,

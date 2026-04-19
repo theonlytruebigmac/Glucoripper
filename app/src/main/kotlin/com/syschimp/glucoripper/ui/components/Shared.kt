@@ -58,6 +58,24 @@ fun bandColor(mgDl: Double, lowMgDl: Double, highMgDl: Double): Color = when {
     else -> GlucoseInRange
 }
 
+/**
+ * Four-way classifier respecting an amber "warning buffer" around the target.
+ * When [warningBuffer] is 0 this degrades to strict red/green and the caller
+ * sees the same behavior as [bandColor].
+ */
+fun bandColor(
+    mgDl: Double,
+    lowMgDl: Double,
+    highMgDl: Double,
+    warningBuffer: Double,
+): Color = when {
+    mgDl < lowMgDl - warningBuffer -> GlucoseLow
+    mgDl < lowMgDl -> GlucoseElevated
+    mgDl <= highMgDl -> GlucoseInRange
+    mgDl <= highMgDl + warningBuffer -> GlucoseElevated
+    else -> GlucoseHigh
+}
+
 // ────────── Formatting helpers ──────────
 
 fun relationShort(code: Int): String? = when (code) {

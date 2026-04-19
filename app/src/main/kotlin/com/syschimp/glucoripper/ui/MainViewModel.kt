@@ -213,6 +213,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setChartRange(minMgDl, maxMgDl) }
     }
 
+    fun setFastingRange(low: Double, high: Double) {
+        viewModelScope.launch { prefs.setFastingRange(low, high) }
+    }
+    fun setPreMealRange(low: Double, high: Double) {
+        viewModelScope.launch { prefs.setPreMealRange(low, high) }
+    }
+    fun setPostMealRange(low: Double, high: Double) {
+        viewModelScope.launch { prefs.setPostMealRange(low, high) }
+    }
+
+    fun setWarningBuffer(buffer: Double) {
+        viewModelScope.launch { prefs.setWarningBuffer(buffer) }
+    }
+
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { prefs.setThemeMode(mode) }
     }
