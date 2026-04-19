@@ -117,6 +117,8 @@ fun MainScreen(
                     onSetMealRelation = viewModel::setMealRelation,
                     onSetFeeling = viewModel::setFeeling,
                     onSetNote = viewModel::setNote,
+                    onLogEvent = viewModel::logEvent,
+                    onRemoveEvent = viewModel::removeEvent,
                     onNavigateToHistory = {
                         navController.navigate(TopDestination.History.route) {
                             launchSingleTop = true
@@ -152,6 +154,8 @@ fun MainScreen(
                     state = state,
                     onSaveUnit = viewModel::setUnit,
                     onSaveRange = viewModel::setTargetRange,
+                    onSaveChartRange = viewModel::setChartRange,
+                    onSaveThemeMode = viewModel::setThemeMode,
                     onSaveAutoPushMode = viewModel::setAutoPushMode,
                     onExportCsv = onExportCsv,
                     onClearHistory = viewModel::clearSyncHistory,

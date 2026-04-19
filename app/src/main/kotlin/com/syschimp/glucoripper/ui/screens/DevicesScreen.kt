@@ -4,6 +4,7 @@ import android.content.IntentSender
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,31 +24,26 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryAlert
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.HealthAndSafety
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,17 +52,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.syschimp.glucoripper.ui.HealthConnectState
 import com.syschimp.glucoripper.ui.PairedMeter
 import com.syschimp.glucoripper.ui.UiState
-import com.syschimp.glucoripper.ui.components.SectionHeader
 import com.syschimp.glucoripper.ui.components.relativeTime
 import kotlinx.coroutines.launch
 import java.time.Instant
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DevicesScreen(
     state: UiState,
@@ -77,31 +72,33 @@ fun DevicesScreen(
     onRequestHealthPermissions: () -> Unit,
 ) {
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Devices", fontWeight = FontWeight.SemiBold) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
     ) { inner ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(inner),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 24.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             item {
-                ConnectivityCard(
-                    bluetoothEnabled = state.bluetoothEnabled,
-                    healthConnectState = state.healthConnectState,
-                    lowBattery = state.lowBatteryFlag,
-                    onRequestHealthPermissions = onRequestHealthPermissions,
-                )
+                Box(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Device Hub",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
             }
 
-            item { SectionHeader("Paired meters") }
+            if (!state.bluetoothEnabled) {
+                item { BluetoothOffCard() }
+            }
 
             if (state.meters.isEmpty()) {
                 item { EmptyMetersCard(onPairMeter) }
@@ -110,126 +107,301 @@ fun DevicesScreen(
                     MeterCard(
                         meter = meter,
                         syncing = state.syncing,
+                        lowBattery = state.lowBatteryFlag,
                         onSync = onSync,
                         onUnpair = onUnpair,
                         onForceResync = onForceResync,
                     )
                 }
-                item { PairMeterButton(onPairMeter) }
+                item { PairAnotherButton(onPairMeter) }
             }
-        }
-    }
-}
 
-@Composable
-private fun ConnectivityCard(
-    bluetoothEnabled: Boolean,
-    healthConnectState: HealthConnectState,
-    lowBattery: Boolean,
-    onRequestHealthPermissions: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                "Connectivity",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            StatusRow(
-                icon = { status ->
-                    Icon(
-                        if (status) Icons.Outlined.Bluetooth else Icons.Default.BluetoothDisabled,
-                        contentDescription = null,
-                        tint = if (status) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.error,
-                    )
-                },
-                ok = bluetoothEnabled,
-                label = "Bluetooth",
-                value = if (bluetoothEnabled) "On" else "Off — enable to sync",
-            )
-            StatusRow(
-                icon = {
-                    Icon(
-                        Icons.Outlined.HealthAndSafety,
-                        contentDescription = null,
-                        tint = when (healthConnectState) {
-                            HealthConnectState.READY -> MaterialTheme.colorScheme.primary
-                            HealthConnectState.NEEDS_PERMISSIONS -> MaterialTheme.colorScheme.tertiary
-                            HealthConnectState.UNAVAILABLE -> MaterialTheme.colorScheme.error
-                        },
-                    )
-                },
-                ok = healthConnectState == HealthConnectState.READY,
-                label = "Health Connect",
-                value = when (healthConnectState) {
-                    HealthConnectState.READY -> "Connected"
-                    HealthConnectState.NEEDS_PERMISSIONS -> "Tap to grant access"
-                    HealthConnectState.UNAVAILABLE -> "Not installed on this device"
-                },
-                onClick = if (healthConnectState == HealthConnectState.NEEDS_PERMISSIONS)
-                    onRequestHealthPermissions else null,
-            )
-            if (lowBattery) {
-                AssistChip(
-                    onClick = {},
-                    label = { Text("Meter battery low") },
-                    leadingIcon = {
-                        Icon(
-                            Icons.Default.BatteryAlert,
-                            contentDescription = null,
-                            modifier = Modifier.size(AssistChipDefaults.IconSize),
-                        )
-                    },
-                    colors = AssistChipDefaults.assistChipColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        labelColor = MaterialTheme.colorScheme.onErrorContainer,
-                    ),
-                    border = null,
+            item {
+                HealthConnectCard(
+                    state = state.healthConnectState,
+                    onRequestPermissions = onRequestHealthPermissions,
                 )
             }
         }
     }
 }
 
+// ───────── Meter card ─────────
+
 @Composable
-private fun StatusRow(
-    icon: @Composable (Boolean) -> Unit,
-    ok: Boolean,
-    label: String,
-    value: String,
-    onClick: (() -> Unit)? = null,
+private fun MeterCard(
+    meter: PairedMeter,
+    syncing: Boolean,
+    lowBattery: Boolean,
+    onSync: (PairedMeter) -> Unit,
+    onUnpair: (PairedMeter) -> Unit,
+    onForceResync: (PairedMeter) -> Unit,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                MeterIllustration()
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        meter.displayName ?: "Contour Meter",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    ConnectedBadge()
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        meter.lastSyncMillis?.let {
+                            "Last sync " + relativeTime(Instant.ofEpochMilli(it))
+                        } ?: "Never synced",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                BatteryChip(lowBattery = lowBattery)
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Button(
+                    onClick = { onSync(meter) },
+                    enabled = !syncing,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    if (syncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(Icons.Default.Refresh, contentDescription = null,
+                            modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Sync Now")
+                    }
+                }
+                Box(modifier = Modifier.weight(1f)) {
+                    OutlinedButton(
+                        onClick = { menuOpen = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                    ) { Text("Unpair") }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Full resync") },
+                            onClick = {
+                                menuOpen = false
+                                onForceResync(meter)
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Unpair meter") },
+                            onClick = {
+                                menuOpen = false
+                                onUnpair(meter)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MeterIllustration() {
+    Box(
+        modifier = Modifier
+            .size(64.dp)
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerHigh,
+                RoundedCornerShape(16.dp),
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Outlined.Bloodtype,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(36.dp),
+        )
+    }
+}
+
+@Composable
+private fun ConnectedBadge() {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(8.dp)
+                .background(Color(0xFF30A46C), CircleShape),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "Connected",
+            style = MaterialTheme.typography.labelMedium,
+            color = Color(0xFF30A46C),
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+@Composable
+private fun BatteryChip(lowBattery: Boolean) {
+    val color = if (lowBattery) Color(0xFFE5484D) else Color(0xFF30A46C)
+    val label = if (lowBattery) "Low" else "OK"
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .let { if (onClick != null) it.padding(vertical = 4.dp) else it },
+            .background(color.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            Modifier.size(36.dp),
-            contentAlignment = Alignment.Center,
-        ) { icon(ok) }
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.labelLarge)
-            Text(
-                value,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Icon(
+            Icons.Default.BatteryAlert,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+// ───────── Health Connect card ─────────
+
+@Composable
+private fun HealthConnectCard(
+    state: HealthConnectState,
+    onRequestPermissions: () -> Unit,
+) {
+    val container = MaterialTheme.colorScheme.secondaryContainer
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface,
+                        RoundedCornerShape(16.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Outlined.HealthAndSafety,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Health Connect Hub",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                HealthConnectStatusLine(state)
+            }
+            when (state) {
+                HealthConnectState.NEEDS_PERMISSIONS ->
+                    Button(
+                        onClick = onRequestPermissions,
+                        shape = RoundedCornerShape(14.dp),
+                    ) { Text("Grant") }
+                HealthConnectState.UNAVAILABLE -> {
+                    /* no action */
+                }
+                HealthConnectState.READY ->
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF30A46C),
+                        modifier = Modifier.size(28.dp),
+                    )
+            }
         }
-        if (onClick != null) {
-            FilledTonalButton(onClick = onClick) { Text("Grant") }
+    }
+}
+
+@Composable
+private fun HealthConnectStatusLine(state: HealthConnectState) {
+    val (color, label) = when (state) {
+        HealthConnectState.READY -> Color(0xFF30A46C) to "Connected"
+        HealthConnectState.NEEDS_PERMISSIONS -> Color(0xFFF5A524) to "Permission required"
+        HealthConnectState.UNAVAILABLE -> Color(0xFFE5484D) to "Not installed"
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).background(color, CircleShape))
+        Spacer(Modifier.width(6.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            fontWeight = FontWeight.Medium,
+        )
+    }
+}
+
+// ───────── Empty/Bluetooth/Pair ─────────
+
+@Composable
+private fun BluetoothOffCard() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                Icons.Default.BluetoothDisabled,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Bluetooth is off",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                )
+                Text(
+                    "Turn it on so your meter can sync.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                )
+            }
         }
     }
 }
@@ -243,7 +415,7 @@ private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
@@ -255,12 +427,15 @@ private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
             Icon(
                 Icons.Outlined.Devices,
                 contentDescription = null,
-                modifier = Modifier.size(40.dp),
+                modifier = Modifier.size(48.dp),
                 tint = MaterialTheme.colorScheme.primary,
             )
-            Spacer(Modifier.height(10.dp))
-            Text("No meter paired", style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "No meter paired",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(4.dp))
             Text(
                 "Put your Contour Next One into pairing mode, then tap Pair meter.",
@@ -268,12 +443,15 @@ private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(16.dp))
-            Button(onClick = {
-                scope.launch {
-                    val sender = onPairMeter()
-                    launcher.launch(IntentSenderRequest.Builder(sender).build())
-                }
-            }) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        val sender = onPairMeter()
+                        launcher.launch(IntentSenderRequest.Builder(sender).build())
+                    }
+                },
+                shape = RoundedCornerShape(14.dp),
+            ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text("Pair meter")
@@ -283,7 +461,7 @@ private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
 }
 
 @Composable
-private fun PairMeterButton(onPairMeter: suspend () -> IntentSender) {
+private fun PairAnotherButton(onPairMeter: suspend () -> IntentSender) {
     val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -296,96 +474,10 @@ private fun PairMeterButton(onPairMeter: suspend () -> IntentSender) {
             }
         },
         modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
     ) {
         Icon(Icons.Default.Add, contentDescription = null)
         Spacer(Modifier.width(6.dp))
         Text("Pair another meter")
-    }
-}
-
-@Composable
-private fun MeterCard(
-    meter: PairedMeter,
-    syncing: Boolean,
-    onSync: (PairedMeter) -> Unit,
-    onUnpair: (PairedMeter) -> Unit,
-    onForceResync: (PairedMeter) -> Unit,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Outlined.Bluetooth,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    meter.displayName ?: "Glucose meter",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    meter.lastSyncMillis?.let {
-                        "Last sync " + relativeTime(Instant.ofEpochMilli(it))
-                    } ?: "Never synced",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    meter.address,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                )
-            }
-            FilledIconButton(onClick = { onSync(meter) }, enabled = !syncing) {
-                if (syncing) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(20.dp),
-                        strokeWidth = 2.dp,
-                    )
-                } else {
-                    Icon(Icons.Default.Refresh, contentDescription = "Sync now")
-                }
-            }
-            Box {
-                IconButton(onClick = { menuOpen = true }) {
-                    Icon(Icons.Default.MoreVert, contentDescription = "More")
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Full resync") },
-                        onClick = {
-                            menuOpen = false
-                            onForceResync(meter)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Unpair") },
-                        onClick = {
-                            menuOpen = false
-                            onUnpair(meter)
-                        },
-                    )
-                }
-            }
-        }
     }
 }

@@ -1,7 +1,10 @@
 package com.syschimp.glucoripper.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -12,32 +15,29 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.FileDownload
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -48,25 +48,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.syschimp.glucoripper.data.AutoPushMode
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.SyncHistoryEntry
+import com.syschimp.glucoripper.data.ThemeMode
 import com.syschimp.glucoripper.ui.UiState
-import com.syschimp.glucoripper.ui.components.SectionHeader
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private val historyFormatter = DateTimeFormatter.ofPattern("MMM d · h:mm a")
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     state: UiState,
     onSaveUnit: (GlucoseUnit) -> Unit,
     onSaveRange: (Double, Double) -> Unit,
+    onSaveChartRange: (Double, Double) -> Unit,
+    onSaveThemeMode: (ThemeMode) -> Unit,
     onSaveAutoPushMode: (AutoPushMode) -> Unit,
     onExportCsv: () -> Unit,
     onClearHistory: () -> Unit,
@@ -74,54 +74,78 @@ fun SettingsScreen(
     var showSyncHistory by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.SemiBold) },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.surface,
     ) { inner ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(inner)
-                .padding(horizontal = 16.dp)
-                .padding(top = 8.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(inner),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 4.dp,
+                bottom = 24.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SectionHeader("Readings")
-            UnitCard(
-                currentUnit = state.prefs.unit,
-                onSaveUnit = onSaveUnit,
-            )
-            TargetRangeCard(
-                initialLow = state.prefs.targetLowMgDl,
-                initialHigh = state.prefs.targetHighMgDl,
-                onSaveRange = onSaveRange,
-            )
+            item {
+                Box(Modifier.fillMaxWidth()) {
+                    Text(
+                        "Settings",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
 
-            SectionHeader("Sync")
-            AutoPushCard(
-                current = state.prefs.autoPushMode,
-                onSelect = onSaveAutoPushMode,
-            )
-            ActionRowCard(
-                icon = Icons.Outlined.ChevronRight,
-                label = "Sync history",
-                subtitle = "${state.syncHistory.size} recorded event${if (state.syncHistory.size == 1) "" else "s"}",
-                onClick = { showSyncHistory = true },
-            )
-
-            SectionHeader("Data")
-            ActionRowCard(
-                icon = Icons.Outlined.FileDownload,
-                label = "Export readings to CSV",
-                subtitle = "Up to the 1,000 most recent readings",
-                onClick = onExportCsv,
-            )
+            item {
+                UnitCard(
+                    currentUnit = state.prefs.unit,
+                    onSaveUnit = onSaveUnit,
+                )
+            }
+            item {
+                TargetRangeCard(
+                    initialLow = state.prefs.targetLowMgDl,
+                    initialHigh = state.prefs.targetHighMgDl,
+                    onSaveRange = onSaveRange,
+                )
+            }
+            item {
+                ChartRangeCard(
+                    initialMin = state.prefs.chartMinMgDl,
+                    initialMax = state.prefs.chartMaxMgDl,
+                    onSaveRange = onSaveChartRange,
+                )
+            }
+            item {
+                ThemeCard(
+                    current = state.prefs.themeMode,
+                    onSelect = onSaveThemeMode,
+                )
+            }
+            item {
+                AutoPushCard(
+                    current = state.prefs.autoPushMode,
+                    onSelect = onSaveAutoPushMode,
+                )
+            }
+            item {
+                ActionRowCard(
+                    icon = Icons.Outlined.ChevronRight,
+                    label = "Sync history",
+                    subtitle = "${state.syncHistory.size} recorded event${if (state.syncHistory.size == 1) "" else "s"}",
+                    onClick = { showSyncHistory = true },
+                )
+            }
+            item {
+                ActionRowCard(
+                    icon = Icons.Outlined.FileDownload,
+                    label = "Export readings to CSV",
+                    subtitle = "Up to the 1,000 most recent readings",
+                    onClick = onExportCsv,
+                )
+            }
         }
     }
 
@@ -134,6 +158,8 @@ fun SettingsScreen(
     }
 }
 
+// ─────────── Display Units ───────────
+
 @Composable
 private fun UnitCard(
     currentUnit: GlucoseUnit,
@@ -141,25 +167,75 @@ private fun UnitCard(
 ) {
     SettingsCard {
         Text(
-            "Display units",
+            "Display Units",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            val options = listOf(
-                GlucoseUnit.MG_PER_DL to "mg/dL",
-                GlucoseUnit.MMOL_PER_L to "mmol/L",
+        Text(
+            "(mg/dL  |  mmol/L)",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            UnitTile(
+                selected = currentUnit == GlucoseUnit.MG_PER_DL,
+                icon = Icons.Outlined.Bloodtype,
+                label = "mg/dL",
+                onClick = { onSaveUnit(GlucoseUnit.MG_PER_DL) },
+                modifier = Modifier.weight(1f),
             )
-            options.forEachIndexed { index, (u, label) ->
-                SegmentedButton(
-                    selected = currentUnit == u,
-                    onClick = { onSaveUnit(u) },
-                    shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                ) { Text(label) }
-            }
+            UnitTile(
+                selected = currentUnit == GlucoseUnit.MMOL_PER_L,
+                icon = Icons.Outlined.Science,
+                label = "mmol/L",
+                onClick = { onSaveUnit(GlucoseUnit.MMOL_PER_L) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
+
+@Composable
+private fun UnitTile(
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val border = if (selected) MaterialTheme.colorScheme.primary
+    else MaterialTheme.colorScheme.outlineVariant
+    val container = if (selected) MaterialTheme.colorScheme.primaryContainer
+    else MaterialTheme.colorScheme.surfaceContainer
+    val onContainer = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+    else MaterialTheme.colorScheme.onSurface
+    Column(
+        modifier = modifier
+            .height(80.dp)
+            .background(container, RoundedCornerShape(16.dp))
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = border,
+                shape = RoundedCornerShape(16.dp),
+            )
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Icon(icon, contentDescription = null, tint = onContainer, modifier = Modifier.size(28.dp))
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = onContainer,
+        )
+    }
+}
+
+// ─────────── Target Range ───────────
 
 @Composable
 private fun TargetRangeCard(
@@ -167,12 +243,13 @@ private fun TargetRangeCard(
     initialHigh: Double,
     onSaveRange: (Double, Double) -> Unit,
 ) {
-    var lowText by remember(initialLow) { mutableStateOf("%.0f".format(initialLow)) }
-    var highText by remember(initialHigh) { mutableStateOf("%.0f".format(initialHigh)) }
+    var range by remember(initialLow, initialHigh) {
+        mutableStateOf(initialLow.toFloat()..initialHigh.toFloat())
+    }
 
     SettingsCard {
         Text(
-            "Target range (mg/dL)",
+            "Target Range (mg/dL)",
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -181,33 +258,144 @@ private fun TargetRangeCard(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
-                value = lowText,
-                onValueChange = { lowText = it.filter { c -> c.isDigit() } },
-                label = { Text("Low") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                singleLine = true,
-            )
-            OutlinedTextField(
-                value = highText,
-                onValueChange = { highText = it.filter { c -> c.isDigit() } },
-                label = { Text("High") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                singleLine = true,
-            )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            ValuePill(label = "Low", value = range.start.toInt())
+            ValuePill(label = "High", value = range.endInclusive.toInt())
         }
-        Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-            Button(onClick = {
-                val low = lowText.toDoubleOrNull() ?: initialLow
-                val high = highText.toDoubleOrNull() ?: initialHigh
-                if (high > low) onSaveRange(low, high)
-            }) { Text("Save") }
+        RangeSlider(
+            value = range,
+            onValueChange = { range = it },
+            onValueChangeFinished = {
+                onSaveRange(range.start.toDouble(), range.endInclusive.toDouble())
+            },
+            valueRange = 40f..300f,
+            steps = (300 - 40) / 5 - 1,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("40", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("300", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
+
+@Composable
+private fun ChartRangeCard(
+    initialMin: Double,
+    initialMax: Double,
+    onSaveRange: (Double, Double) -> Unit,
+) {
+    var range by remember(initialMin, initialMax) {
+        mutableStateOf(initialMin.toFloat()..initialMax.toFloat())
+    }
+    SettingsCard {
+        Text(
+            "Chart Range (mg/dL)",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "Y-axis bounds for the dashboard chart.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            ValuePill(label = "Min", value = range.start.toInt())
+            ValuePill(label = "Max", value = range.endInclusive.toInt())
+        }
+        RangeSlider(
+            value = range,
+            onValueChange = { range = it },
+            onValueChangeFinished = {
+                onSaveRange(range.start.toDouble(), range.endInclusive.toDouble())
+            },
+            valueRange = 0f..400f,
+            steps = 400 / 10 - 1,
+        )
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("0", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("400", style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ValuePill(label: String, value: Int) {
+    Row(
+        modifier = Modifier
+            .background(
+                MaterialTheme.colorScheme.surfaceContainer,
+                RoundedCornerShape(20.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            value.toString(),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+// ─────────── Theme ───────────
+
+@Composable
+private fun ThemeCard(
+    current: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+) {
+    SettingsCard {
+        Text(
+            "Theme",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        ThemeMode.entries.forEach { mode ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = current == mode,
+                        onClick = { onSelect(mode) },
+                        role = Role.RadioButton,
+                    )
+                    .padding(vertical = 6.dp),
+            ) {
+                RadioButton(
+                    selected = current == mode,
+                    onClick = { onSelect(mode) },
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(mode.label, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+    }
+}
+
+// ─────────── Auto-push ───────────
 
 @Composable
 private fun AutoPushCard(
@@ -252,6 +440,8 @@ private fun AutoPushCard(
         }
     }
 }
+
+// ─────────── Action row ───────────
 
 @Composable
 private fun ActionRowCard(
@@ -306,6 +496,8 @@ private fun SettingsCard(content: @Composable () -> Unit) {
         ) { content() }
     }
 }
+
+// ─────────── Sync history sheet ───────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

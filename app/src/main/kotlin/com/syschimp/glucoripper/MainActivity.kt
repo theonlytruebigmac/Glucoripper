@@ -6,13 +6,19 @@ import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import android.graphics.Color as AndroidColor
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.health.connect.client.PermissionController
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.core.view.WindowCompat
 import com.syschimp.glucoripper.ui.MainScreen
 import com.syschimp.glucoripper.ui.MainViewModel
 import com.syschimp.glucoripper.ui.theme.GlucoripperTheme
+import com.syschimp.glucoripper.ui.theme.resolveDarkTheme
 import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
@@ -51,7 +57,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestRuntimePermissions()
         setContent {
-            GlucoripperTheme {
+            val state by viewModel.state.collectAsState()
+            val darkTheme = resolveDarkTheme(state.prefs.themeMode)
+            // Keep status-bar icon color in sync with theme
+            WindowCompat.getInsetsController(window, window.decorView)
+                .isAppearanceLightStatusBars = !darkTheme
+            GlucoripperTheme(darkTheme = darkTheme) {
                 MainScreen(
                     viewModel = viewModel,
                     onPairMeter = { viewModel.requestPairingIntent() },

@@ -13,12 +13,15 @@ import com.syschimp.glucoripper.companion.MeterPairingManager
 import com.syschimp.glucoripper.data.Annotations
 import com.syschimp.glucoripper.data.AutoPushMode
 import com.syschimp.glucoripper.data.CsvExporter
+import com.syschimp.glucoripper.data.Events
 import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
+import com.syschimp.glucoripper.data.HealthEvent
 import com.syschimp.glucoripper.data.Preferences
 import com.syschimp.glucoripper.data.ReadingAnnotation
 import com.syschimp.glucoripper.data.StagedReading
 import com.syschimp.glucoripper.data.StagingStore
+import com.syschimp.glucoripper.data.ThemeMode
 import com.syschimp.glucoripper.data.SyncHistory
 import com.syschimp.glucoripper.data.SyncHistoryEntry
 import com.syschimp.glucoripper.data.UserPreferences
@@ -66,6 +69,7 @@ data class UiState(
     val annotations: Map<String, ReadingAnnotation> = emptyMap(),
     val staged: List<StagedReading> = emptyList(),
     val pushing: Boolean = false,
+    val events: List<HealthEvent> = emptyList(),
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -77,6 +81,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val annotationsStore = Annotations(app)
     private val stagingStore = StagingStore(app)
     private val pusher = StagingPusher(app)
+    private val eventsStore = Events(app)
 
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -90,13 +95,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .collect { AutoPushScheduler.apply(getApplication(), it) }
         }
         viewModelScope.launch {
-            combine(
+            @Suppress("UNCHECKED_CAST")
+            val flows = arrayOf(
                 prefs.flow,
                 history.flow,
                 SyncBus.state,
                 annotationsStore.flow,
                 stagingStore.flow,
-            ) { p, h, bus, ann, staged -> listOf(p, h, bus, ann, staged) }.collect { tuple ->
+                eventsStore.flow,
+            ) as Array<kotlinx.coroutines.flow.Flow<Any?>>
+            combine(*flows) { arr -> arr }.collect { tuple ->
                 @Suppress("UNCHECKED_CAST")
                 val p = tuple[0] as UserPreferences
                 @Suppress("UNCHECKED_CAST")
@@ -106,6 +114,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val ann = tuple[3] as Map<String, ReadingAnnotation>
                 @Suppress("UNCHECKED_CAST")
                 val staged = tuple[4] as List<StagedReading>
+                @Suppress("UNCHECKED_CAST")
+                val events = tuple[5] as List<HealthEvent>
                 _state.update {
                     it.copy(
                         prefs = p,
@@ -115,6 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         lowBatteryFlag = bus.lastLowBatteryFlag,
                         annotations = ann,
                         staged = staged,
+                        events = events,
                     )
                 }
                 if (!bus.running) refresh() // reload readings on completion
@@ -198,6 +209,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { prefs.setTargetRange(lowMgDl, highMgDl) }
     }
 
+    fun setChartRange(minMgDl: Double, maxMgDl: Double) {
+        viewModelScope.launch { prefs.setChartRange(minMgDl, maxMgDl) }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { prefs.setThemeMode(mode) }
+    }
+
     fun clearSyncHistory() {
         viewModelScope.launch { history.clear() }
     }
@@ -262,6 +281,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(note = note?.trim()?.ifEmpty { null })
             }
         }
+    }
+
+    fun logEvent(event: HealthEvent) {
+        viewModelScope.launch { eventsStore.add(event) }
+    }
+
+    fun removeEvent(id: String) {
+        viewModelScope.launch { eventsStore.remove(id) }
     }
 
     fun exportCsv(uri: Uri, onDone: (Int) -> Unit) {

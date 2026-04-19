@@ -1,6 +1,13 @@
 package com.syschimp.glucoripper.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -56,49 +63,32 @@ fun ReadingDetailSheet(
     val effectiveMeal = annotation?.mealOverride ?: reading.relationToMeal
     var noteText by remember(annotation?.note) { mutableStateOf(annotation?.note.orEmpty()) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Text(
-                "Reading",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    formatGlucose(reading.level.inMilligramsPerDeciliter, unit),
-                    style = MaterialTheme.typography.displayMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    unitLabel(unit),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-            }
-            Text(
-                detailTimeFormatter.format(reading.time.atZone(ZoneId.systemDefault())),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            HorizontalDivider()
+    val mgDl = reading.level.inMilligramsPerDeciliter
+    val bandColor = com.syschimp.glucoripper.ui.components.bandColor(
+        mgDl, 70.0, 140.0,
+    )
 
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Meal", style = MaterialTheme.typography.labelLarge)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SheetHeroCard(
+                valueText = formatGlucose(mgDl, unit),
+                unitText = unitLabel(unit),
+                dateText = detailTimeFormatter.format(reading.time.atZone(ZoneId.systemDefault())),
+                accent = bandColor,
+            )
+            SheetSectionCard(title = "Meal") {
                 MealChips(selected = effectiveMeal, onSelect = onSaveMeal)
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("How are you feeling?", style = MaterialTheme.typography.labelLarge)
+            SheetSectionCard(title = "How are you feeling?") {
                 FeelingChips(selected = annotation?.feeling, onSelect = onSaveFeeling)
             }
-
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Note", style = MaterialTheme.typography.labelLarge)
+            SheetSectionCard(title = "Note") {
                 OutlinedTextField(
                     value = noteText,
                     onValueChange = { noteText = it },
@@ -107,25 +97,132 @@ fun ReadingDetailSheet(
                     minLines = 2,
                     maxLines = 4,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    shape = RoundedCornerShape(14.dp),
                 )
-                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
-                    TextButton(onClick = { onSaveNote(noteText) }) { Text("Save note") }
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    Button(
+                        onClick = { onSaveNote(noteText) },
+                        shape = RoundedCornerShape(14.dp),
+                    ) { Text("Save") }
                 }
             }
-
-            HorizontalDivider()
-            Field("Specimen", specimenLabel(reading.specimenSource))
-            Field(
-                "Device",
-                listOfNotNull(
-                    reading.metadata.device?.manufacturer,
-                    reading.metadata.device?.model,
-                ).joinToString(" ").ifBlank { "—" },
-            )
-            Field("Source ID", reading.metadata.clientRecordId ?: reading.metadata.id)
+            SheetSectionCard(title = "Source") {
+                MetaRow("Specimen", specimenLabel(reading.specimenSource))
+                MetaRow(
+                    "Device",
+                    listOfNotNull(
+                        reading.metadata.device?.manufacturer,
+                        reading.metadata.device?.model,
+                    ).joinToString(" ").ifBlank { "—" },
+                )
+                MetaRow(
+                    "Source ID",
+                    reading.metadata.clientRecordId ?: reading.metadata.id,
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun SheetHeroCard(
+    valueText: String,
+    unitText: String,
+    dateText: String,
+    accent: androidx.compose.ui.graphics.Color,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Reading",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        valueText,
+                        style = MaterialTheme.typography.displayMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        unitText,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp),
+                    )
+                }
+                Text(
+                    dateText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(14.dp)
+                    .background(accent, CircleShape),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SheetSectionCard(
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            content()
+        }
+    }
+}
+
+@Composable
+private fun MetaRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth()) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(90.dp),
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -9,8 +9,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
+fun resolveDarkTheme(mode: com.syschimp.glucoripper.data.ThemeMode): Boolean = when (mode) {
+    com.syschimp.glucoripper.data.ThemeMode.LIGHT -> false
+    com.syschimp.glucoripper.data.ThemeMode.DARK -> true
+    com.syschimp.glucoripper.data.ThemeMode.SYSTEM -> isSystemInDarkTheme()
+}
+
+@Composable
 fun GlucoripperTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     useDynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {

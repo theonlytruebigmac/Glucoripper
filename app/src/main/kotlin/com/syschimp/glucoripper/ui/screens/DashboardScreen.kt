@@ -3,6 +3,7 @@ package com.syschimp.glucoripper.ui.screens
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -13,28 +14,37 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BluetoothDisabled
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.HealthAndSafety
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -45,28 +55,29 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.Feeling
 import com.syschimp.glucoripper.data.GlucoseUnit
+import com.syschimp.glucoripper.data.HealthEvent
 import com.syschimp.glucoripper.data.StagedReading
 import com.syschimp.glucoripper.ui.HealthConnectState
+import com.syschimp.glucoripper.ui.LogEventSheet
 import com.syschimp.glucoripper.ui.PairedMeter
 import com.syschimp.glucoripper.ui.ReadingDetailSheet
 import com.syschimp.glucoripper.ui.StagedReadingDetailSheet
 import com.syschimp.glucoripper.ui.TimeInRangeCard
 import com.syschimp.glucoripper.ui.UiState
 import com.syschimp.glucoripper.ui.components.Dot
-import com.syschimp.glucoripper.ui.components.ReadingRow
+import com.syschimp.glucoripper.ui.components.RingGauge
+import com.syschimp.glucoripper.ui.components.TimelineCard
 import com.syschimp.glucoripper.ui.components.SectionHeader
-import com.syschimp.glucoripper.ui.components.TodayChartCard
+import com.syschimp.glucoripper.ui.components.TodayChart
 import com.syschimp.glucoripper.ui.components.bandColor
 import com.syschimp.glucoripper.ui.components.formatTimeOnly
 import com.syschimp.glucoripper.ui.components.relationShort
-import com.syschimp.glucoripper.ui.components.relativeTime
 import com.syschimp.glucoripper.ui.computeTimeInRange
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
@@ -86,43 +97,29 @@ fun DashboardScreen(
     onSetMealRelation: (BloodGlucoseRecord, Int) -> Unit,
     onSetFeeling: (String?, Feeling?) -> Unit,
     onSetNote: (String?, String?) -> Unit,
+    onLogEvent: (HealthEvent) -> Unit,
+    onRemoveEvent: (String) -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToDevices: () -> Unit,
 ) {
     var selectedReading by remember { mutableStateOf<BloodGlucoseRecord?>(null) }
     var selectedStagedId by remember { mutableStateOf<String?>(null) }
+    var showLogEvent by remember { mutableStateOf(false) }
 
     val pullState = rememberPullToRefreshState()
+    val latest = state.recentReadings.firstOrNull()
+    val previous = state.recentReadings.getOrNull(1)
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        "Dashboard",
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                },
-                actions = {
-                    if (state.meters.isNotEmpty()) {
-                        IconButton(
-                            onClick = { state.meters.firstOrNull()?.let(onSyncNow) },
-                            enabled = !state.syncing,
-                        ) {
-                            if (state.syncing) {
-                                CircularProgressIndicator(
-                                    Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else {
-                                Icon(Icons.Default.Refresh, contentDescription = "Sync now")
-                            }
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { showLogEvent = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                text = { Text("Log Event") },
             )
         },
         containerColor = MaterialTheme.colorScheme.surface,
@@ -138,9 +135,43 @@ fun DashboardScreen(
             ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = 4.dp,
+                        bottom = 88.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
+                    item {
+                        Box(Modifier.fillMaxWidth()) {
+                            Text(
+                                "Dashboard",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+                            if (state.meters.isNotEmpty()) {
+                                Box(Modifier.align(Alignment.CenterEnd)) {
+                                    if (state.syncing) {
+                                        CircularProgressIndicator(
+                                            Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    } else {
+                                        Icon(
+                                            Icons.Default.Refresh,
+                                            contentDescription = "Sync now",
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clickable { state.meters.firstOrNull()?.let(onSyncNow) },
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     val problems = collectProblems(state)
                     if (problems.isNotEmpty()) {
                         item {
@@ -152,28 +183,54 @@ fun DashboardScreen(
                     }
 
                     item {
-                        TodayChartCard(
-                            readings = state.recentReadings,
-                            unit = state.prefs.unit,
-                            lowMgDl = state.prefs.targetLowMgDl,
-                            highMgDl = state.prefs.targetHighMgDl,
-                            hasMeter = state.meters.isNotEmpty(),
-                            onLatestClick = {
-                                state.recentReadings.firstOrNull()?.let { selectedReading = it }
-                            },
-                            onPairClick = onNavigateToDevices,
-                        )
+                        HubCard {
+                            Column(
+                                Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 10.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(0.dp),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    RingGauge(
+                                        latest = latest,
+                                        previous = previous,
+                                        unit = state.prefs.unit,
+                                        lowMgDl = state.prefs.targetLowMgDl,
+                                        highMgDl = state.prefs.targetHighMgDl,
+                                        onClick = {
+                                            latest?.let { selectedReading = it }
+                                        },
+                                    )
+                                }
+                                TargetZoneChip(
+                                    lowMgDl = state.prefs.targetLowMgDl,
+                                    highMgDl = state.prefs.targetHighMgDl,
+                                    unit = state.prefs.unit,
+                                    current = latest?.level?.inMilligramsPerDeciliter,
+                                )
+                                TodayChart(
+                                    readings = state.recentReadings,
+                                    events = state.events,
+                                    unit = state.prefs.unit,
+                                    lowMgDl = state.prefs.targetLowMgDl,
+                                    highMgDl = state.prefs.targetHighMgDl,
+                                    hasMeter = state.meters.isNotEmpty(),
+                                    onEventClick = { /* future: edit */ },
+                                    onPairClick = onNavigateToDevices,
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    yMinMgDl = state.prefs.chartMinMgDl,
+                                    yMaxMgDl = state.prefs.chartMaxMgDl,
+                                )
+                            }
+                        }
                     }
 
-                    if (state.recentReadings.isNotEmpty()) {
-                        item {
-                            QuickStats(
-                                readings = state.recentReadings,
-                                unit = state.prefs.unit,
-                                lowMgDl = state.prefs.targetLowMgDl,
-                                highMgDl = state.prefs.targetHighMgDl,
-                            )
-                        }
+                    item {
+                        Text(
+                            "Recent",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
+                        )
                     }
 
                     if (state.staged.isNotEmpty()) {
@@ -190,65 +247,40 @@ fun DashboardScreen(
                         }
                     }
 
-                    item {
-                        val tir = computeTimeInRange(
-                            state.recentReadings,
-                            state.prefs.targetLowMgDl,
-                            state.prefs.targetHighMgDl,
-                        )
-                        TimeInRangeCard(
-                            tir,
-                            state.prefs.unit,
-                            state.prefs.targetLowMgDl,
-                            state.prefs.targetHighMgDl,
-                        )
+                    // "Recent" on the dashboard = today's readings only. Full
+                    // history lives on the History tab.
+                    val zone = java.time.ZoneId.systemDefault()
+                    val today = java.time.LocalDate.now(zone)
+                    val todayReadings = state.recentReadings.filter {
+                        it.time.atZone(zone).toLocalDate() == today
                     }
-
-                    if (state.recentReadings.size > 1) {
-                        item {
-                            SectionHeader(
-                                text = "Recent",
-                                action = {
-                                    TextButton(onClick = onNavigateToHistory) {
-                                        Text("See all")
-                                        Spacer(Modifier.width(2.dp))
-                                        Icon(
-                                            Icons.AutoMirrored.Filled.ArrowForward,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
-                                },
+                    if (todayReadings.isNotEmpty()) {
+                        items(todayReadings, key = { it.metadata.id }) { r ->
+                            val ann = r.metadata.clientRecordId
+                                ?.let(state.annotations::get)
+                            TimelineCard(
+                                reading = r,
+                                annotation = ann,
+                                unit = state.prefs.unit,
+                                lowMgDl = state.prefs.targetLowMgDl,
+                                highMgDl = state.prefs.targetHighMgDl,
+                                onClick = { selectedReading = r },
                             )
                         }
-                        val recent = state.recentReadings.drop(1).take(5)
+                    } else {
                         item {
                             Card(
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                                 ),
                             ) {
-                                Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                                    recent.forEachIndexed { index, r ->
-                                        val ann = r.metadata.clientRecordId
-                                            ?.let(state.annotations::get)
-                                        ReadingRow(
-                                            reading = r,
-                                            annotation = ann,
-                                            unit = state.prefs.unit,
-                                            lowMgDl = state.prefs.targetLowMgDl,
-                                            highMgDl = state.prefs.targetHighMgDl,
-                                            onClick = { selectedReading = r },
-                                        )
-                                        if (index < recent.size - 1) {
-                                            HorizontalDivider(
-                                                color = MaterialTheme.colorScheme.outlineVariant
-                                                    .copy(alpha = 0.4f),
-                                            )
-                                        }
-                                    }
-                                }
+                                Text(
+                                    "No readings today yet.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(16.dp),
+                                )
                             }
                         }
                     }
@@ -281,6 +313,59 @@ fun DashboardScreen(
                 onDiscard = { onDiscardStaged(id) },
             )
         } ?: run { selectedStagedId = null }
+    }
+
+    if (showLogEvent) {
+        LogEventSheet(
+            onDismiss = { showLogEvent = false },
+            onSave = onLogEvent,
+        )
+    }
+}
+
+// ─────────── Hub card wrapper ───────────
+
+@Composable
+private fun HubCard(content: @Composable () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        content()
+    }
+}
+
+// ─────────── Target zone chip ───────────
+
+@Composable
+private fun TargetZoneChip(
+    lowMgDl: Double,
+    highMgDl: Double,
+    unit: GlucoseUnit,
+    current: Double?,
+) {
+    val color = current?.let { bandColor(it, lowMgDl, highMgDl) }
+        ?: MaterialTheme.colorScheme.outline
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Dot(color = color, size = 8.dp)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                "Target Zone (${formatGlucose(lowMgDl, unit)}–${formatGlucose(highMgDl, unit)} ${unitLabel(unit)})",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
