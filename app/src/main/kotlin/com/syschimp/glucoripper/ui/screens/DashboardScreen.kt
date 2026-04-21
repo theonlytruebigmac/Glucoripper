@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -84,6 +83,9 @@ import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,6 +104,7 @@ fun DashboardScreen(
     onRemoveEvent: (String) -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToDevices: () -> Unit,
+    onNavigateToInsights: () -> Unit,
 ) {
     var selectedReading by remember { mutableStateOf<BloodGlucoseRecord?>(null) }
     var selectedStagedId by remember { mutableStateOf<String?>(null) }
@@ -145,32 +148,10 @@ fun DashboardScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     item {
-                        Box(Modifier.fillMaxWidth()) {
-                            Text(
-                                "Dashboard",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.align(Alignment.Center),
-                            )
-                            if (state.meters.isNotEmpty()) {
-                                Box(Modifier.align(Alignment.CenterEnd)) {
-                                    if (state.syncing) {
-                                        CircularProgressIndicator(
-                                            Modifier.size(20.dp),
-                                            strokeWidth = 2.dp,
-                                        )
-                                    } else {
-                                        Icon(
-                                            Icons.Default.Refresh,
-                                            contentDescription = "Sync now",
-                                            modifier = Modifier
-                                                .size(22.dp)
-                                                .clickable { state.meters.firstOrNull()?.let(onSyncNow) },
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                        GreetingRow(
+                            state = state,
+                            onSyncNow = onSyncNow,
+                        )
                     }
 
                     val problems = collectProblems(state)
@@ -252,6 +233,15 @@ fun DashboardScreen(
                     }
 
                     item {
+                        QuickStats(
+                            readings = state.recentReadings,
+                            unit = state.prefs.unit,
+                            lowMgDl = state.prefs.targetLowMgDl,
+                            highMgDl = state.prefs.targetHighMgDl,
+                        )
+                    }
+
+                    item {
                         Text(
                             "Recent",
                             style = MaterialTheme.typography.titleLarge,
@@ -309,6 +299,10 @@ fun DashboardScreen(
                                 )
                             }
                         }
+                    }
+
+                    item {
+                        InsightsFooter(onClick = onNavigateToInsights)
                     }
                 }
             }
@@ -404,6 +398,62 @@ private fun contextLabelFor(mealRelation: Int): String = when (mealRelation) {
     else -> "Target Zone"
 }
 
+// ─────────── Greeting row ───────────
+
+@Composable
+private fun GreetingRow(
+    state: UiState,
+    onSyncNow: (PairedMeter) -> Unit,
+) {
+    // Compose once per composition tree; time doesn't change fast enough to
+    // warrant per-recomposition recalculation, and the user will see a fresh
+    // value next time they return to the Dashboard.
+    val (greeting, dateLabel) = remember {
+        val phrase = when (LocalTime.now().hour) {
+            in 0..4 -> "Good night"
+            in 5..11 -> "Good morning"
+            in 12..17 -> "Good afternoon"
+            else -> "Good evening"
+        }
+        phrase to LocalDate.now().format(DateTimeFormatter.ofPattern("EEE, MMM d"))
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                greeting,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                dateLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.meters.isNotEmpty()) {
+            if (state.syncing) {
+                CircularProgressIndicator(
+                    Modifier.size(22.dp),
+                    strokeWidth = 2.dp,
+                )
+            } else {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Sync now",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { state.meters.firstOrNull()?.let(onSyncNow) },
+                )
+            }
+        }
+    }
+}
+
 // ─────────── Quick stats ───────────
 
 @Composable
@@ -413,16 +463,16 @@ private fun QuickStats(
     lowMgDl: Double,
     highMgDl: Double,
 ) {
-    val now = Instant.now()
-    val dayAgo = now.minus(Duration.ofHours(24))
-    val weekAgo = now.minus(Duration.ofDays(7))
-    val lastDay = readings.filter { it.time.isAfter(dayAgo) }
-    val lastWeek = readings.filter { it.time.isAfter(weekAgo) }
-    val weekMgDl = lastWeek.map { it.level.inMilligramsPerDeciliter }
-    val inRange = weekMgDl.count { it in lowMgDl..highMgDl }
-    val inRangePct = if (weekMgDl.isEmpty()) 0 else inRange * 100 / weekMgDl.size
-    val avgLabel = weekMgDl.takeIf { it.isNotEmpty() }?.average()
-        ?.let { formatGlucose(it, unit) } ?: "—"
+    val dayAgo = Instant.now().minus(Duration.ofHours(24))
+    val last24h = readings.filter { it.time.isAfter(dayAgo) }
+    val mgs = last24h.map { it.level.inMilligramsPerDeciliter }
+
+    val avgLabel = if (mgs.isEmpty()) "—" else formatGlucose(mgs.average(), unit)
+    val inRangeLabel = if (mgs.isEmpty()) "—"
+    else {
+        val inRange = mgs.count { it in lowMgDl..highMgDl }
+        "${(inRange * 100.0 / mgs.size).toInt()}%"
+    }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -430,22 +480,58 @@ private fun QuickStats(
     ) {
         StatTile(
             modifier = Modifier.weight(1f),
-            label = "In range",
-            value = "$inRangePct%",
-            caption = "7d",
+            label = "Average",
+            value = avgLabel,
+            caption = "24h · ${unitLabel(unit)}",
         )
         StatTile(
             modifier = Modifier.weight(1f),
-            label = "Average",
-            value = avgLabel,
-            caption = "7d · ${unitLabel(unit)}",
+            label = "In range",
+            value = inRangeLabel,
+            caption = "24h",
         )
         StatTile(
             modifier = Modifier.weight(1f),
             label = "Readings",
-            value = lastDay.size.toString(),
+            value = last24h.size.toString(),
             caption = "24h",
         )
+    }
+}
+
+// ─────────── Insights footer ───────────
+
+@Composable
+private fun InsightsFooter(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "See full insights",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                Text(
+                    "GMI, time-in-range, per-context averages, and more",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

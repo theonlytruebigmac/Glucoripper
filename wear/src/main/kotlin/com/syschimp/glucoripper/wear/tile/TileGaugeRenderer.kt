@@ -188,7 +188,8 @@ object TileGaugeRenderer {
 
     private fun formatValue(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
         GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)
-        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0)
+        // 18.0156 keeps tile output consistent with the phone app and WearFormat.
+        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0156)
     }
 
     private fun unitLabel(unit: GlucoseUnit): String = when (unit) {

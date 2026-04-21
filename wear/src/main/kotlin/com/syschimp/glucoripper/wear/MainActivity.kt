@@ -12,6 +12,7 @@ import com.syschimp.glucoripper.wear.ui.WearHomePager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 
@@ -28,5 +29,10 @@ class MainActivity : ComponentActivity() {
             }.collectAsState()
             WearHomePager(state)
         }
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
     }
 }

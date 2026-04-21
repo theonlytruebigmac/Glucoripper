@@ -33,6 +33,7 @@ import com.syschimp.glucoripper.ui.theme.GlucoseLow
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.math.roundToInt
 
 data class TimeInRangeStats(
     val windowDays: Int,
@@ -68,12 +69,19 @@ fun computeTimeInRange(
         .values
         .map { it.map { r -> r.level.inMilligramsPerDeciliter }.average() }
 
+    // Round the two smaller buckets and derive the third so the three always
+    // sum to exactly 100 — otherwise the stacked bar caption can show 99% / 101%.
+    val total = recent.size.toDouble()
+    val lowPct = (low * 100.0 / total).roundToInt()
+    val highPct = (high * 100.0 / total).roundToInt()
+    val inRangePct = (100 - lowPct - highPct).coerceIn(0, 100)
+
     return TimeInRangeStats(
         windowDays = windowDays,
         count = recent.size,
-        inRangePct = (inRange * 100 / recent.size),
-        lowPct = (low * 100 / recent.size),
-        highPct = (high * 100 / recent.size),
+        inRangePct = inRangePct,
+        lowPct = lowPct,
+        highPct = highPct,
         averageMgDl = avg,
         dailyAveragesMgDl = dailies,
     )

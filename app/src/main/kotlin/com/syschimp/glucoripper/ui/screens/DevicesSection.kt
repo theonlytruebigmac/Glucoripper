@@ -8,23 +8,18 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryAlert
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothDisabled
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Refresh
@@ -39,16 +34,14 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,8 +55,13 @@ import com.syschimp.glucoripper.ui.components.relativeTime
 import kotlinx.coroutines.launch
 import java.time.Instant
 
+/**
+ * Renders paired meters, pairing affordances, and the Health Connect hub as a
+ * stacked column — designed to be embedded inside another scrolling container
+ * (currently the Settings screen).
+ */
 @Composable
-fun DevicesScreen(
+fun DevicesSection(
     state: UiState,
     onPairMeter: suspend () -> IntentSender,
     onSync: (PairedMeter) -> Unit,
@@ -71,62 +69,35 @@ fun DevicesScreen(
     onUnpair: (PairedMeter) -> Unit,
     onRequestHealthPermissions: () -> Unit,
 ) {
-    Scaffold(
-        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.surface,
-    ) { inner ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(inner),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 4.dp,
-                bottom = 24.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            item {
-                Box(Modifier.fillMaxWidth()) {
-                    Text(
-                        "Device Hub",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-
-            if (!state.bluetoothEnabled) {
-                item { BluetoothOffCard() }
-            }
-
-            if (state.meters.isEmpty()) {
-                item { EmptyMetersCard(onPairMeter) }
-            } else {
-                items(state.meters, key = { it.associationId }) { meter ->
-                    MeterCard(
-                        meter = meter,
-                        syncing = state.syncing,
-                        lowBattery = state.lowBatteryFlag,
-                        onSync = onSync,
-                        onUnpair = onUnpair,
-                        onForceResync = onForceResync,
-                    )
-                }
-                item { PairAnotherButton(onPairMeter) }
-            }
-
-            item {
-                HealthConnectCard(
-                    state = state.healthConnectState,
-                    onRequestPermissions = onRequestHealthPermissions,
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text(
+            "Devices",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+        )
+        if (!state.bluetoothEnabled) BluetoothOffCard()
+        if (state.meters.isEmpty()) {
+            EmptyMetersCard(onPairMeter)
+        } else {
+            state.meters.forEach { meter ->
+                MeterCard(
+                    meter = meter,
+                    syncing = state.syncing,
+                    lowBattery = state.lowBatteryFlag,
+                    onSync = onSync,
+                    onUnpair = onUnpair,
+                    onForceResync = onForceResync,
                 )
             }
+            PairAnotherButton(onPairMeter)
         }
+        HealthConnectCard(
+            state = state.healthConnectState,
+            onRequestPermissions = onRequestHealthPermissions,
+        )
     }
 }
-
-// ───────── Meter card ─────────
 
 @Composable
 private fun MeterCard(
@@ -285,8 +256,6 @@ private fun BatteryChip(lowBattery: Boolean) {
     }
 }
 
-// ───────── Health Connect card ─────────
-
 @Composable
 private fun HealthConnectCard(
     state: HealthConnectState,
@@ -321,7 +290,7 @@ private fun HealthConnectCard(
             Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    "Health Connect Hub",
+                    "Health Connect",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -334,9 +303,7 @@ private fun HealthConnectCard(
                         onClick = onRequestPermissions,
                         shape = RoundedCornerShape(14.dp),
                     ) { Text("Grant") }
-                HealthConnectState.UNAVAILABLE -> {
-                    /* no action */
-                }
+                HealthConnectState.UNAVAILABLE -> { /* no action */ }
                 HealthConnectState.READY ->
                     Icon(
                         Icons.Default.CheckCircle,
@@ -367,8 +334,6 @@ private fun HealthConnectStatusLine(state: HealthConnectState) {
         )
     }
 }
-
-// ───────── Empty/Bluetooth/Pair ─────────
 
 @Composable
 private fun BluetoothOffCard() {

@@ -63,7 +63,11 @@ fun ReadingDetailSheet(
     onSaveNote: (String?) -> Unit,
 ) {
     val effectiveMeal = annotation?.mealOverride ?: reading.relationToMeal
-    var noteText by remember(annotation?.note) { mutableStateOf(annotation?.note.orEmpty()) }
+    // Keyed on the reading identity, not the annotation contents, so the field
+    // doesn't reset mid-edit when a concurrent flow emission refreshes state.
+    var noteText by remember(reading.metadata.id) {
+        mutableStateOf(annotation?.note.orEmpty())
+    }
 
     val mgDl = reading.level.inMilligramsPerDeciliter
     val range = prefs.targetRangeFor(effectiveMeal)
@@ -312,7 +316,9 @@ fun StagedReadingDetailSheet(
     onPush: () -> Unit,
     onDiscard: () -> Unit,
 ) {
-    var noteText by remember(staged.note) { mutableStateOf(staged.note.orEmpty()) }
+    // Keyed on the staged id so re-emissions of the same reading (e.g. another
+    // field edited elsewhere) don't wipe an in-progress note draft.
+    var noteText by remember(staged.id) { mutableStateOf(staged.note.orEmpty()) }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(

@@ -163,7 +163,9 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
 
     private fun formatValue(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
         GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)
-        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0)
+        // 18.0156 matches the phone-side MGDL_PER_MMOL constant so complications
+        // never disagree with the phone's displayed mmol/L value.
+        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0156)
     }
 
     private fun unitLabel(unit: GlucoseUnit): String = when (unit) {

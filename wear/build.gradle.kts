@@ -19,8 +19,8 @@ android {
         // Wear versionCode = phone versionCode + 1_000_000. Play Console requires unique
         // versionCodes per applicationId; the offset keeps them in lockstep for humans
         // while guaranteeing no collision with phone builds.
-        versionCode = 1_000_010
-        versionName = "0.4.2"
+        versionCode = 1_000_011
+        versionName = "0.5.0"
     }
 
     signingConfigs {

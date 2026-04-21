@@ -49,10 +49,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.content.IntentSender
 import com.syschimp.glucoripper.data.AutoPushMode
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.SyncHistoryEntry
 import com.syschimp.glucoripper.data.ThemeMode
+import com.syschimp.glucoripper.ui.PairedMeter
 import com.syschimp.glucoripper.ui.UiState
 import java.time.Instant
 import java.time.ZoneId
@@ -63,6 +65,11 @@ private val historyFormatter = DateTimeFormatter.ofPattern("MMM d · h:mm a")
 @Composable
 fun SettingsScreen(
     state: UiState,
+    onPairMeter: suspend () -> IntentSender,
+    onSyncMeter: (PairedMeter) -> Unit,
+    onForceResyncMeter: (PairedMeter) -> Unit,
+    onUnpairMeter: (PairedMeter) -> Unit,
+    onRequestHealthPermissions: () -> Unit,
     onSaveUnit: (GlucoseUnit) -> Unit,
     onSaveRange: (Double, Double) -> Unit,
     onSaveFastingRange: (Double, Double) -> Unit,
@@ -100,6 +107,17 @@ fun SettingsScreen(
                         modifier = Modifier.align(Alignment.Center),
                     )
                 }
+            }
+
+            item {
+                DevicesSection(
+                    state = state,
+                    onPairMeter = onPairMeter,
+                    onSync = onSyncMeter,
+                    onForceResync = onForceResyncMeter,
+                    onUnpair = onUnpairMeter,
+                    onRequestHealthPermissions = onRequestHealthPermissions,
+                )
             }
 
             item {

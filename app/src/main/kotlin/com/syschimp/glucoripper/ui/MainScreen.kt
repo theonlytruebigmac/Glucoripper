@@ -17,7 +17,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
@@ -28,10 +27,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.syschimp.glucoripper.ui.nav.TopDestination
 import com.syschimp.glucoripper.ui.screens.DashboardScreen
-import com.syschimp.glucoripper.ui.screens.DevicesScreen
 import com.syschimp.glucoripper.ui.screens.HistoryScreen
+import com.syschimp.glucoripper.ui.screens.InsightsScreen
 import com.syschimp.glucoripper.ui.screens.SettingsScreen
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,12 +42,12 @@ fun MainScreen(
     val state by viewModel.state.collectAsState()
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(state.lastMessage) {
-        state.lastMessage?.let { msg ->
-            scope.launch { snackbarHostState.showSnackbar(msg) }
-        }
+        // Call showSnackbar directly (no wrapping scope.launch) so that the
+        // LaunchedEffect cancelling on a new message also dismisses the prior
+        // snackbar, preventing them from stacking on rapid state changes.
+        state.lastMessage?.let { msg -> snackbarHostState.showSnackbar(msg) }
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -125,7 +123,12 @@ fun MainScreen(
                         }
                     },
                     onNavigateToDevices = {
-                        navController.navigate(TopDestination.Devices.route) {
+                        navController.navigate(TopDestination.Settings.route) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onNavigateToInsights = {
+                        navController.navigate(TopDestination.Insights.route) {
                             launchSingleTop = true
                         }
                     },
@@ -139,19 +142,17 @@ fun MainScreen(
                     onSetNote = viewModel::setNote,
                 )
             }
-            composable(TopDestination.Devices.route) {
-                DevicesScreen(
-                    state = state,
-                    onPairMeter = onPairMeter,
-                    onSync = viewModel::syncNow,
-                    onForceResync = viewModel::forceFullResync,
-                    onUnpair = viewModel::unpair,
-                    onRequestHealthPermissions = onRequestHealthPermissions,
-                )
+            composable(TopDestination.Insights.route) {
+                InsightsScreen(state = state)
             }
             composable(TopDestination.Settings.route) {
                 SettingsScreen(
                     state = state,
+                    onPairMeter = onPairMeter,
+                    onSyncMeter = viewModel::syncNow,
+                    onForceResyncMeter = viewModel::forceFullResync,
+                    onUnpairMeter = viewModel::unpair,
+                    onRequestHealthPermissions = onRequestHealthPermissions,
                     onSaveUnit = viewModel::setUnit,
                     onSaveRange = viewModel::setTargetRange,
                     onSaveChartRange = viewModel::setChartRange,

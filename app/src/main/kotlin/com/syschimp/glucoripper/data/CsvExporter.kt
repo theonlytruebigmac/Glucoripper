@@ -16,25 +16,39 @@ object CsvExporter {
             val zone = ZoneId.systemDefault()
             readings.forEach { r ->
                 val mgDl = r.level.inMilligramsPerDeciliter
-                w.append(ts.format(r.time))
+                w.append(csvField(ts.format(r.time)))
                 w.append(',')
-                w.append(r.time.atZone(zone).toLocalDateTime().toString())
+                w.append(csvField(r.time.atZone(zone).toLocalDateTime().toString()))
                 w.append(',')
                 w.append("%.1f".format(mgDl))
                 w.append(',')
                 w.append("%.2f".format(mgDl.mgDlToMmol()))
                 w.append(',')
-                w.append(mealString(r.relationToMeal))
+                w.append(csvField(mealString(r.relationToMeal)))
                 w.append(',')
-                w.append(specimenString(r.specimenSource))
+                w.append(csvField(specimenString(r.specimenSource)))
                 w.append(',')
-                w.append((r.metadata.clientRecordId ?: r.metadata.id).replace(",", " "))
+                w.append(csvField(r.metadata.clientRecordId ?: r.metadata.id))
                 w.append('\n')
             }
             w.flush()
         } ?: return 0
         return readings.size
     }
+
+    /**
+     * RFC 4180 quoting plus a defense against CSV-formula injection when the
+     * file is opened in Excel/Sheets: values that start with `=`, `+`, `-`,
+     * `@`, tab, or carriage return get a leading single quote so the spreadsheet
+     * treats them as text rather than a formula.
+     */
+    private fun csvField(value: String): String {
+        val defended = if (value.isNotEmpty() && value[0] in FORMULA_TRIGGER_CHARS) "'$value" else value
+        val needsQuoting = defended.any { it == ',' || it == '"' || it == '\n' || it == '\r' }
+        return if (needsQuoting) "\"" + defended.replace("\"", "\"\"") + "\"" else defended
+    }
+
+    private val FORMULA_TRIGGER_CHARS = charArrayOf('=', '+', '-', '@', '\t', '\r')
 
     private fun mealString(code: Int): String = when (code) {
         BloodGlucoseRecord.RELATION_TO_MEAL_BEFORE_MEAL -> "before"

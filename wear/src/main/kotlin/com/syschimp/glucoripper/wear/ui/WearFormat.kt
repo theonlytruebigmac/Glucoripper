@@ -23,9 +23,12 @@ internal fun classify(mgDl: Double, low: Double, high: Double): Band = when {
     else -> Band("High", GlucoseHigh)
 }
 
+/** 1 mmol/L glucose = 18.0156 mg/dL; matches phone-side `MGDL_PER_MMOL`. */
+internal const val MGDL_PER_MMOL = 18.0156
+
 internal fun formatGlucose(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
     GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)
-    GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0)
+    GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / MGDL_PER_MMOL)
 }
 
 internal fun unitLabel(unit: GlucoseUnit): String = when (unit) {

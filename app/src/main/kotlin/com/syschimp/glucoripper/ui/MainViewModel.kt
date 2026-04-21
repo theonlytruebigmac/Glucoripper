@@ -160,7 +160,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .getSystemService(BluetoothManager::class.java)?.adapter
 
             val readings = if (hcState == HealthConnectState.READY) {
-                healthRepo.readRecentReadings(200)
+                // 1000 is the Health Connect page-size ceiling. At 4–8 fingersticks
+                // a day this covers 125–250 days — enough to populate the 90d
+                // Insights window without paginating.
+                healthRepo.readRecentReadings(1000)
             } else emptyList()
 
             _state.update {

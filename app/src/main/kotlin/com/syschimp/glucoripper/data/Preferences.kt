@@ -105,21 +105,24 @@ class Preferences(private val context: Context) {
     }
 
     suspend fun setFastingRange(low: Double, high: Double) {
+        val (l, h) = orderedRange(low, high, lowMin = 40.0, lowMax = 200.0, highMin = 80.0, highMax = 300.0)
         context.prefsStore.edit {
-            it[fastingLowKey] = low.coerceIn(40.0, 200.0)
-            it[fastingHighKey] = high.coerceIn(80.0, 300.0)
+            it[fastingLowKey] = l
+            it[fastingHighKey] = h
         }
     }
     suspend fun setPreMealRange(low: Double, high: Double) {
+        val (l, h) = orderedRange(low, high, lowMin = 40.0, lowMax = 200.0, highMin = 80.0, highMax = 300.0)
         context.prefsStore.edit {
-            it[preMealLowKey] = low.coerceIn(40.0, 200.0)
-            it[preMealHighKey] = high.coerceIn(80.0, 300.0)
+            it[preMealLowKey] = l
+            it[preMealHighKey] = h
         }
     }
     suspend fun setPostMealRange(low: Double, high: Double) {
+        val (l, h) = orderedRange(low, high, lowMin = 40.0, lowMax = 250.0, highMin = 100.0, highMax = 400.0)
         context.prefsStore.edit {
-            it[postMealLowKey] = low.coerceIn(40.0, 250.0)
-            it[postMealHighKey] = high.coerceIn(100.0, 400.0)
+            it[postMealLowKey] = l
+            it[postMealHighKey] = h
         }
     }
 
@@ -132,9 +135,10 @@ class Preferences(private val context: Context) {
     }
 
     suspend fun setTargetRange(lowMgDl: Double, highMgDl: Double) {
+        val (l, h) = orderedRange(lowMgDl, highMgDl, lowMin = 40.0, lowMax = 200.0, highMin = 100.0, highMax = 400.0)
         context.prefsStore.edit {
-            it[targetLowKey] = lowMgDl.coerceIn(40.0, 200.0)
-            it[targetHighKey] = highMgDl.coerceIn(100.0, 400.0)
+            it[targetLowKey] = l
+            it[targetHighKey] = h
         }
     }
 
@@ -147,6 +151,21 @@ class Preferences(private val context: Context) {
 
     suspend fun setAutoPushMode(mode: AutoPushMode) {
         context.prefsStore.edit { it[autoPushKey] = mode.name }
+    }
+
+    /**
+     * Coerce both bounds into their slider ranges, then guarantee `low < high`
+     * so the UI can't persist a degenerate range (e.g. low=150, high=100) via a
+     * glitchy slider drag or programmatic set.
+     */
+    private fun orderedRange(
+        low: Double, high: Double,
+        lowMin: Double, lowMax: Double,
+        highMin: Double, highMax: Double,
+    ): Pair<Double, Double> {
+        val l = low.coerceIn(lowMin, lowMax)
+        val h = high.coerceIn(highMin, highMax)
+        return if (l < h) l to h else l to (l + 1.0).coerceAtMost(highMax)
     }
 }
 

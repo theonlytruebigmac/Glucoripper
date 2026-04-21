@@ -165,7 +165,10 @@ private fun buildReadingList(payload: GlucosePayload): List<HistoryRow> {
     val times = payload.windowTimesMillis
     val values = payload.windowMgDls
     val meals = payload.windowMealRelations
-    val n = minOf(times.size, values.size)
+    // All three arrays should be parallel; take the shortest length if the
+    // DataClient payload ever arrives with a size mismatch rather than risk
+    // reading past the end or mis-pairing meals to readings.
+    val n = minOf(times.size, values.size, meals.size)
     if (n == 0) return emptyList()
 
     val zone = ZoneId.systemDefault()

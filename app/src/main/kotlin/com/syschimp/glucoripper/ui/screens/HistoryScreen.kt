@@ -45,6 +45,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.math.roundToInt
 
 private val dayHeaderFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
 
@@ -70,7 +71,8 @@ fun HistoryScreen(
     val lowTarget = state.prefs.targetLowMgDl
     val highTarget = state.prefs.targetHighMgDl
     val inRangeCount = lastWeek.count { it.level.inMilligramsPerDeciliter in lowTarget..highTarget }
-    val inRangePct = if (lastWeek.isEmpty()) 0 else inRangeCount * 100 / lastWeek.size
+    val inRangePct = if (lastWeek.isEmpty()) 0
+    else (inRangeCount * 100.0 / lastWeek.size).roundToInt().coerceIn(0, 100)
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),

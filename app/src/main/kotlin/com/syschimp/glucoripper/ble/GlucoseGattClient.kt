@@ -310,39 +310,55 @@ class GlucoseGattClient(
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
-                pendingConnection?.takeIf { it.isActive }?.resume(Unit)
+                val cont = pendingConnection
                 pendingConnection = null
+                cont?.takeIf { it.isActive }?.resume(Unit)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 val err = BleException("Disconnected (status=$status)")
-                pendingConnection?.takeIf { it.isActive }?.resumeWithException(err)
+                val connCont = pendingConnection
                 pendingConnection = null
+                connCont?.takeIf { it.isActive }?.resumeWithException(err)
                 racpIndications.close(err)
                 measurements.close(err)
+                contexts.close(err)
             }
         }
 
         override fun onServicesDiscovered(g: BluetoothGatt, status: Int) {
+            val cont = pendingDiscover
+            pendingDiscover = null
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                pendingDiscover?.takeIf { it.isActive }?.resume(Unit)
+                cont?.takeIf { it.isActive }?.resume(Unit)
             } else {
-                pendingDiscover?.takeIf { it.isActive }
+                cont?.takeIf { it.isActive }
                     ?.resumeWithException(BleException("discover failed $status"))
             }
-            pendingDiscover = null
         }
 
         override fun onDescriptorWrite(
             g: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int,
         ) {
-            pendingDescriptor?.takeIf { it.isActive }?.resume(status)
+            val cont = pendingDescriptor
             pendingDescriptor = null
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                cont?.takeIf { it.isActive }?.resume(status)
+            } else {
+                cont?.takeIf { it.isActive }
+                    ?.resumeWithException(BleException("descriptor write failed status=$status"))
+            }
         }
 
         override fun onCharacteristicWrite(
             g: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int,
         ) {
-            pendingWrite?.takeIf { it.isActive }?.resume(status)
+            val cont = pendingWrite
             pendingWrite = null
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                cont?.takeIf { it.isActive }?.resume(status)
+            } else {
+                cont?.takeIf { it.isActive }
+                    ?.resumeWithException(BleException("write failed status=$status"))
+            }
         }
 
         override fun onCharacteristicRead(
@@ -351,13 +367,14 @@ class GlucoseGattClient(
             value: ByteArray,
             status: Int,
         ) {
+            val cont = pendingRead
+            pendingRead = null
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                pendingRead?.takeIf { it.isActive }?.resume(value.copyOf())
+                cont?.takeIf { it.isActive }?.resume(value.copyOf())
             } else {
-                pendingRead?.takeIf { it.isActive }
+                cont?.takeIf { it.isActive }
                     ?.resumeWithException(BleException("read failed status=$status"))
             }
-            pendingRead = null
         }
 
         @Deprecated("Pre-Tiramisu overload")

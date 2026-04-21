@@ -28,6 +28,7 @@ import com.syschimp.glucoripper.wear.data.GlucoseStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.Duration
@@ -40,6 +41,11 @@ private const val GAUGE_SIZE_PX = 300
 class GlucoseTileService : TileService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
 
     override fun onTileRequest(
         requestParams: RequestBuilders.TileRequest,
