@@ -42,6 +42,12 @@ class GlucoseTileService : TileService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Single-slot cache keyed by resourcesVersion. Tile host re-requests the
+    // resources bundle on every refresh even when the version is unchanged; this
+    // avoids redrawing the same 180KB bitmap repeatedly.
+    private var cachedVersion: String? = null
+    private var cachedPixels: ByteArray? = null
+
     override fun onDestroy() {
         scope.cancel()
         super.onDestroy()
@@ -73,10 +79,27 @@ class GlucoseTileService : TileService() {
             "glucose-tile-resources"
         }
 
-    private fun resourcesVersion(payload: GlucosePayload): String =
-        // Bumping on every new reading forces the tile host to re-request the
-        // gauge bitmap so it reflects the latest value.
-        payload.latestTimeMillis.toString().ifBlank { "0" }
+    private fun resourcesVersion(payload: GlucosePayload): String {
+        // Bump whenever anything that affects the rendered gauge changes: the
+        // reading itself, the unit, or any of the target ranges (since those
+        // drive the colored segments).
+        val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
+        return listOf(
+            payload.latestTimeMillis,
+            payload.latestMgDl,
+            payload.latestMealRelation,
+            payload.unit.name,
+            low, high,
+        ).joinToString("|")
+    }
+
+    private fun pixelsFor(version: String, payload: GlucosePayload): ByteArray {
+        cachedPixels?.takeIf { cachedVersion == version }?.let { return it }
+        val pixels = TileGaugeRenderer.renderRgb565(payload, GAUGE_SIZE_PX)
+        cachedVersion = version
+        cachedPixels = pixels
+        return pixels
+    }
 
     private fun buildResources(
         requestedVersion: String,
@@ -84,16 +107,16 @@ class GlucoseTileService : TileService() {
     ): ResourceBuilders.Resources {
         val builder = ResourceBuilders.Resources.Builder().setVersion(requestedVersion)
         if (payload.latestTimeMillis != 0L) {
-            val pngBytes = TileGaugeRenderer.renderPng(payload, GAUGE_SIZE_PX)
+            val pixels = pixelsFor(requestedVersion, payload)
             builder.addIdToImageMapping(
                 GAUGE_RES_ID,
                 ResourceBuilders.ImageResource.Builder()
                     .setInlineResource(
                         ResourceBuilders.InlineImageResource.Builder()
-                            .setData(pngBytes)
+                            .setData(pixels)
                             .setWidthPx(GAUGE_SIZE_PX)
                             .setHeightPx(GAUGE_SIZE_PX)
-                            .setFormat(ResourceBuilders.IMAGE_FORMAT_UNDEFINED)
+                            .setFormat(ResourceBuilders.IMAGE_FORMAT_RGB_565)
                             .build(),
                     )
                     .build(),

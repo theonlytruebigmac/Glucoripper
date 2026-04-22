@@ -1,9 +1,12 @@
 package com.syschimp.glucoripper.wear
 
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import androidx.wear.tiles.TileService
+import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
+import com.syschimp.glucoripper.wear.complication.GlucoseComplicationService
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseStore
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
@@ -20,7 +23,7 @@ import kotlinx.coroutines.launch
  *
  * Trigger with:
  *   adb shell am broadcast -a com.syschimp.glucoripper.wear.DEV_SEED \
- *     -n com.syschimp.glucoripper/.DevSeedReceiver
+ *     -n com.syschimp.glucoripper/com.syschimp.glucoripper.wear.DevSeedReceiver
  */
 class DevSeedReceiver : BroadcastReceiver() {
 
@@ -54,9 +57,17 @@ class DevSeedReceiver : BroadcastReceiver() {
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                GlucoseStore(context.applicationContext).save(payload)
-                TileService.getUpdater(context.applicationContext)
+                val appCtx = context.applicationContext
+                GlucoseStore(appCtx).save(payload)
+                TileService.getUpdater(appCtx)
                     .requestUpdate(GlucoseTileService::class.java)
+                ComplicationDataSourceUpdateRequester.create(
+                    context = appCtx,
+                    complicationDataSourceComponent = ComponentName(
+                        appCtx,
+                        GlucoseComplicationService::class.java,
+                    ),
+                ).requestUpdateAll()
             } finally {
                 pending.finish()
             }

@@ -7,11 +7,11 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
+import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
-import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import kotlin.math.cos
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -19,6 +19,9 @@ import kotlin.math.sin
  * Draws the same ring-gauge the main `:wear` app shows in [NowScreen], but into
  * a [Bitmap] so it can be surfaced as an inline image in the protolayout tile.
  * Tiles can't host Compose, so the drawing is ported to [android.graphics.Canvas].
+ *
+ * Renders raw RGB_565 pixel bytes — protolayout's InlineImageResource does not
+ * decode PNG/JPEG, it expects raw pixels in one of its IMAGE_FORMAT_* variants.
  */
 object TileGaugeRenderer {
 
@@ -35,14 +38,17 @@ object TileGaugeRenderer {
     private const val TEXT_COLOR = 0xFFE1E3E6.toInt()
     private const val TEXT_DIM = 0xB3E1E3E6.toInt()
 
-    fun renderPng(payload: GlucosePayload, sizePx: Int): ByteArray {
-        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    fun renderRgb565(payload: GlucosePayload, sizePx: Int): ByteArray {
+        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
         val canvas = Canvas(bmp)
+        // RGB_565 has no alpha; pre-fill so antialiased edges blend onto black
+        // instead of leaving undefined pixels.
+        canvas.drawColor(Color.BLACK)
         draw(canvas, payload, sizePx.toFloat())
-        val out = ByteArrayOutputStream()
-        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        val buf = ByteBuffer.allocate(bmp.byteCount)
+        bmp.copyPixelsToBuffer(buf)
         bmp.recycle()
-        return out.toByteArray()
+        return buf.array()
     }
 
     private fun draw(canvas: Canvas, payload: GlucosePayload, size: Float) {
@@ -188,8 +194,7 @@ object TileGaugeRenderer {
 
     private fun formatValue(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
         GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)
-        // 18.0156 keeps tile output consistent with the phone app and WearFormat.
-        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0156)
+        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / MGDL_PER_MMOL)
     }
 
     private fun unitLabel(unit: GlucoseUnit): String = when (unit) {

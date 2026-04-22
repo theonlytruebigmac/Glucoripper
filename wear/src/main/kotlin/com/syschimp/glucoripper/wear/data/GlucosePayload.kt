@@ -110,24 +110,3 @@ data class GlucosePayload(
 }
 
 enum class GlucoseUnit { MG_PER_DL, MMOL_PER_L }
-
-object WearPaths {
-    const val LATEST = "/glucose/latest"
-
-    const val KEY_TIME = "time"
-    const val KEY_MGDL = "mgDl"
-    const val KEY_MEAL = "meal"
-    const val KEY_LOW = "targetLow"
-    const val KEY_HIGH = "targetHigh"
-    const val KEY_UNIT = "unit"
-    const val KEY_WIN_TIMES = "winTimes"
-    const val KEY_WIN_VALUES = "winMgDls"
-    const val KEY_WIN_MEALS = "winMeals"
-    const val KEY_LAST_SYNC = "lastSync"
-    const val KEY_FASTING_LOW = "fastingLow"
-    const val KEY_FASTING_HIGH = "fastingHigh"
-    const val KEY_PRE_MEAL_LOW = "preMealLow"
-    const val KEY_PRE_MEAL_HIGH = "preMealHigh"
-    const val KEY_POST_MEAL_LOW = "postMealLow"
-    const val KEY_POST_MEAL_HIGH = "postMealHigh"
-}

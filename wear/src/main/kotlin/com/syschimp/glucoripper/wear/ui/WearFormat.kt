@@ -1,6 +1,7 @@
 package com.syschimp.glucoripper.wear.ui
 
 import androidx.compose.ui.graphics.Color
+import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
 import java.time.Duration
@@ -22,9 +23,6 @@ internal fun classify(mgDl: Double, low: Double, high: Double): Band = when {
     mgDl < 180.0 -> Band("Elevated", GlucoseElevated)
     else -> Band("High", GlucoseHigh)
 }
-
-/** 1 mmol/L glucose = 18.0156 mg/dL; matches phone-side `MGDL_PER_MMOL`. */
-internal const val MGDL_PER_MMOL = 18.0156
 
 internal fun formatGlucose(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
     GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)

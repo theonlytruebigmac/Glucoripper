@@ -10,8 +10,8 @@ import androidx.health.connect.client.records.metadata.Metadata
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.BloodGlucose
-import android.util.Log
 import com.syschimp.glucoripper.data.StagedReading
+import timber.log.Timber
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
@@ -52,7 +52,7 @@ class HealthConnectRepository(private val context: Context) {
             Duration.between(now, maxTime).plusSeconds(1)
         } else Duration.ZERO
         if (!drift.isZero) {
-            Log.i("HealthRepo", "Meter clock ahead by ${drift.seconds}s; shifting timestamps back")
+            Timber.i("Meter clock ahead by %ds; shifting timestamps back", drift.seconds)
         }
 
         val hcRecords = readings.map { r ->

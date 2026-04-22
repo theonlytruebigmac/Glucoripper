@@ -1,9 +1,9 @@
 package com.syschimp.glucoripper.sync
 
 import android.content.Context
-import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import timber.log.Timber
 
 /**
  * Periodic WorkManager job that pushes whatever is currently in staging to
@@ -18,17 +18,13 @@ class AutoPushWorker(
         val pusher = StagingPusher(applicationContext)
         return pusher.push().fold(
             onSuccess = { report ->
-                Log.i(TAG, "Auto-push: attempted=${report.attempted} written=${report.written}")
+                Timber.i("Auto-push: attempted=%d written=%d", report.attempted, report.written)
                 Result.success()
             },
             onFailure = { t ->
-                Log.w(TAG, "Auto-push failed", t)
+                Timber.w(t, "Auto-push failed")
                 Result.retry()
             },
         )
-    }
-
-    companion object {
-        private const val TAG = "AutoPushWorker"
     }
 }

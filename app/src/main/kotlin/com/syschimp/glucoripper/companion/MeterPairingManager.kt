@@ -8,11 +8,11 @@ import android.content.Context
 import android.content.IntentSender
 import android.os.Build
 import android.os.ParcelUuid
-import android.util.Log
 import com.syschimp.glucoripper.ble.GlucoseUuids
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import timber.log.Timber
 
 /**
  * Associates the user's glucose meter with the app using CompanionDeviceManager.
@@ -20,7 +20,6 @@ import kotlinx.coroutines.suspendCancellableCoroutine
  * device comes into BLE range — no manual background scanning required.
  */
 class MeterPairingManager(private val context: Context) {
-    private val tag = "MeterPairing"
     private val cdm = context.getSystemService(CompanionDeviceManager::class.java)
 
     data class Association(val id: Int, val address: String?, val displayName: String?)
@@ -66,7 +65,7 @@ class MeterPairingManager(private val context: Context) {
             }
 
             override fun onAssociationCreated(associationInfo: AssociationInfo) {
-                Log.i(tag, "Association created: id=${associationInfo.id}")
+                Timber.i("Association created: id=${associationInfo.id}")
                 enableBackgroundOps(associationInfo.id)
             }
 
@@ -88,7 +87,7 @@ class MeterPairingManager(private val context: Context) {
         val address = associations().firstOrNull { it.id == associationId }?.address ?: return
         @Suppress("DEPRECATION")
         runCatching { cdm.startObservingDevicePresence(address) }
-            .onFailure { Log.w(tag, "startObservingDevicePresence failed", it) }
+            .onFailure { Timber.w(it, "startObservingDevicePresence failed") }
     }
 
     fun disassociate(associationId: Int) {

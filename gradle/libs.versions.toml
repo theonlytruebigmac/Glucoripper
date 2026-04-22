@@ -16,9 +16,13 @@ wearTiles = "1.4.1"
 wearProtoLayout = "1.2.1"
 wearWatchface = "1.2.1"
 concurrentFutures = "1.2.0"
+junit = "4.13.2"
+truth = "1.4.4"
+timber = "5.0.1"
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 
@@ -54,3 +58,9 @@ androidx-wear-complications = { group = "androidx.wear.watchface", name = "watch
 androidx-concurrent-futures = { group = "androidx.concurrent", name = "concurrent-futures", version.ref = "concurrentFutures" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
+
+timber = { group = "com.jakewharton.timber", name = "timber", version.ref = "timber" }
+
+# Test
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }

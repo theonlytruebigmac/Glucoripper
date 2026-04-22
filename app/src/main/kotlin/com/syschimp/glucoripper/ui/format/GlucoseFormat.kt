@@ -1,7 +1,7 @@
 package com.syschimp.glucoripper.ui.format
 
 import com.syschimp.glucoripper.data.GlucoseUnit
-import com.syschimp.glucoripper.data.mgDlToMmol
+import com.syschimp.glucoripper.shared.mgDlToMmol
 
 fun formatGlucose(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
     GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)

@@ -3,18 +3,23 @@ package com.syschimp.glucoripper.wear.complication
 import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Intent
+import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.LongTextComplicationData
+import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
+import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
 import com.syschimp.glucoripper.wear.MainActivity
+import com.syschimp.glucoripper.wear.R
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseStore
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
+import com.syschimp.glucoripper.wear.ui.trendDelta
 import kotlinx.coroutines.flow.first
 import java.time.Duration
 import java.time.Instant
@@ -63,13 +68,15 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
                 .Builder("Latest glucose $text ${unitLabel(payload.unit)}").build(),
         )
             .setTitle(PlainComplicationText.Builder(unitLabel(payload.unit)).build())
+            .setMonochromaticImage(monochromaticIcon())
             .setTapAction(launchAppIntent())
             .build()
     }
 
     private fun longTextFor(payload: GlucosePayload): LongTextComplicationData {
         val value = formatValue(payload.latestMgDl, payload.unit)
-        val band = classifyLabel(payload.latestMgDl, payload.targetLowMgDl, payload.targetHighMgDl)
+        val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
+        val band = classifyLabel(payload.latestMgDl, low, high)
         val arrow = trendArrow(payload)
         val long = "$value ${unitLabel(payload.unit)} $arrow · $band".trim()
         return LongTextComplicationData.Builder(
@@ -77,6 +84,7 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
             contentDescription = PlainComplicationText.Builder(long).build(),
         )
             .setTitle(PlainComplicationText.Builder("Glucose · ${relativeTime(payload.latestInstant)}").build())
+            .setMonochromaticImage(monochromaticIcon())
             .setTapAction(launchAppIntent())
             .build()
     }
@@ -90,7 +98,8 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
         val value = payload.latestMgDl.toFloat().coerceIn(minV, maxV)
         val arrow = trendArrow(payload)
         val text = formatValue(payload.latestMgDl, payload.unit) + arrow
-        val band = classifyLabel(payload.latestMgDl, payload.targetLowMgDl, payload.targetHighMgDl)
+        val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
+        val band = classifyLabel(payload.latestMgDl, low, high)
         return RangedValueComplicationData.Builder(
             value = value,
             min = minV,
@@ -100,29 +109,17 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
         )
             .setText(PlainComplicationText.Builder(text).build())
             .setTitle(PlainComplicationText.Builder(unitLabel(payload.unit)).build())
+            .setMonochromaticImage(monochromaticIcon())
             .setTapAction(launchAppIntent())
             .build()
     }
 
-    /**
-     * Direction of change between the latest reading and the most recent reading at
-     * least [minGapMinutes] before it. Returns empty string when the window is too
-     * thin to compute or when the reading is old enough that "trend" is misleading.
-     */
-    private fun trendArrow(payload: GlucosePayload, minGapMinutes: Long = 15): String {
-        val values = payload.windowMgDls
-        val times = payload.windowTimesMillis
-        if (values.size < 2) return ""
-        // Find the last point with a gap of >= minGapMinutes before the latest.
-        val latestIdx = values.size - 1
-        val latestT = times[latestIdx]
-        val gapMs = minGapMinutes * 60_000L
-        var priorIdx = -1
-        for (i in latestIdx - 1 downTo 0) {
-            if (latestT - times[i] >= gapMs) { priorIdx = i; break }
-        }
-        if (priorIdx < 0) return ""
-        val delta = values[latestIdx] - values[priorIdx]
+    private fun monochromaticIcon(): MonochromaticImage =
+        MonochromaticImage.Builder(Icon.createWithResource(this, R.drawable.ic_glucose_drop))
+            .build()
+
+    private fun trendArrow(payload: GlucosePayload): String {
+        val delta = trendDelta(payload) ?: return ""
         return when {
             delta > 15f -> "↗"
             delta < -15f -> "↘"
@@ -163,9 +160,7 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
 
     private fun formatValue(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
         GlucoseUnit.MG_PER_DL -> "%.0f".format(mgDl)
-        // 18.0156 matches the phone-side MGDL_PER_MMOL constant so complications
-        // never disagree with the phone's displayed mmol/L value.
-        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / 18.0156)
+        GlucoseUnit.MMOL_PER_L -> "%.1f".format(mgDl / MGDL_PER_MMOL)
     }
 
     private fun unitLabel(unit: GlucoseUnit): String = when (unit) {

@@ -12,7 +12,6 @@ import android.bluetooth.BluetoothStatusCodes
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.util.Log
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.TimeoutCancellationException
@@ -21,6 +20,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import timber.log.Timber
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -33,8 +33,6 @@ class GlucoseGattClient(
     private val context: Context,
     private val device: BluetoothDevice,
 ) {
-    private val tag = "GlucoseGatt"
-
     private var gatt: BluetoothGatt? = null
     private val opMutex = Mutex()
     private var pendingConnection: CancellableContinuation<Unit>? = null
@@ -76,10 +74,10 @@ class GlucoseGattClient(
             readGlucoseFeature(glucoseSvc)
             enableCccd(measurement, indicate = false)
             if (measurementContext != null) {
-                Log.i(tag, "Glucose Measurement Context characteristic present; subscribing")
+                Timber.i("Glucose Measurement Context characteristic present; subscribing")
                 enableCccd(measurementContext, indicate = false)
             } else {
-                Log.i(tag, "Glucose Measurement Context characteristic NOT present on this meter")
+                Timber.i("Glucose Measurement Context characteristic NOT present on this meter")
             }
             enableCccd(racp, indicate = true)
 
@@ -177,7 +175,7 @@ class GlucoseGattClient(
                         measurements.onReceive { payload ->
                             runCatching { GlucoseMeasurementParser.parse(payload) }
                                 .onSuccess { records += it }
-                                .onFailure { Log.w(tag, "parse failure", it) }
+                                .onFailure { Timber.w(it, "parse failure") }
                             null
                         }
                         contexts.onReceive { payload ->
@@ -185,7 +183,7 @@ class GlucoseGattClient(
                                 .onSuccess { ctx ->
                                     contextBySeq[ctx.sequenceNumber] = ctx.mealRelation
                                 }
-                                .onFailure { Log.w(tag, "context parse failure", it) }
+                                .onFailure { Timber.w(it, "context parse failure") }
                             null
                         }
                     }
@@ -202,7 +200,7 @@ class GlucoseGattClient(
                 }
             }
         } catch (_: TimeoutCancellationException) {
-            Log.w(tag, "RACP did not complete within timeout; returning partial set")
+            Timber.w("RACP did not complete within timeout; returning partial set")
         }
         return records.map { r ->
             val meal = contextBySeq[r.sequenceNumber]
@@ -212,9 +210,9 @@ class GlucoseGattClient(
 
     private fun dumpServices() {
         val g = gatt ?: return
-        Log.i(tag, "=== GATT services for ${device.address} ===")
+        Timber.i("=== GATT services for ${device.address} ===")
         g.services.forEach { svc ->
-            Log.i(tag, "Service ${svc.uuid}")
+            Timber.i("Service ${svc.uuid}")
             svc.characteristics.forEach { ch ->
                 val props = buildList {
                     val p = ch.properties
@@ -224,10 +222,10 @@ class GlucoseGattClient(
                     if (p and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0) add("NOTIFY")
                     if (p and BluetoothGattCharacteristic.PROPERTY_INDICATE != 0) add("INDICATE")
                 }.joinToString("|")
-                Log.i(tag, "  Characteristic ${ch.uuid} [$props]")
+                Timber.i("  Characteristic ${ch.uuid} [$props]")
             }
         }
-        Log.i(tag, "=== end service dump ===")
+        Timber.i("=== end service dump ===")
     }
 
     /**
@@ -243,13 +241,13 @@ class GlucoseGattClient(
                 (BluetoothGattCharacteristic.PROPERTY_WRITE or
                         BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE)) != 0
         if (!isWritable) {
-            Log.i(tag, "CTS Current Time is not writable on this meter; skipping clock set")
+            Timber.i("CTS Current Time is not writable on this meter; skipping clock set")
             return
         }
         val payload = CurrentTimeBuilder.build(java.time.ZonedDateTime.now())
         runCatching { writeCharacteristic(ch, payload) }
-            .onSuccess { Log.i(tag, "Pushed phone time to meter CTS") }
-            .onFailure { Log.w(tag, "Failed to set meter clock via CTS", it) }
+            .onSuccess { Timber.i("Pushed phone time to meter CTS") }
+            .onFailure { Timber.w(it, "Failed to set meter clock via CTS") }
     }
 
     private suspend fun dumpDeviceInformation() {
@@ -263,8 +261,8 @@ class GlucoseGattClient(
             val ch = dis.getCharacteristic(uuid) ?: return@forEach
             runCatching {
                 val bytes = readCharacteristic(ch)
-                Log.i(tag, "DIS $label = ${bytes.toString(Charsets.UTF_8).trim()}")
-            }.onFailure { Log.w(tag, "DIS $label read failed", it) }
+                Timber.i("DIS $label = ${bytes.toString(Charsets.UTF_8).trim()}")
+            }.onFailure { Timber.w(it, "DIS $label read failed") }
         }
     }
 
@@ -273,8 +271,8 @@ class GlucoseGattClient(
         runCatching {
             val bytes = readCharacteristic(ch)
             val v = if (bytes.size >= 2) (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8) else 0
-            Log.i(tag, "Glucose Feature bitmap = 0x%04x (raw=${bytes.toHex()})".format(v))
-        }.onFailure { Log.w(tag, "Glucose Feature read failed", it) }
+            Timber.i("Glucose Feature bitmap = 0x%04x (raw=${bytes.toHex()})".format(v))
+        }.onFailure { Timber.w(it, "Glucose Feature read failed") }
     }
 
     private suspend fun readCharacteristic(
@@ -394,10 +392,9 @@ class GlucoseGattClient(
             val hex = value.joinToString(" ") { "%02x".format(it) }
             when (characteristic.uuid) {
                 GlucoseUuids.GLUCOSE_MEASUREMENT -> {
-                    Log.d(tag, "MEASUREMENT raw: $hex")
+                    Timber.d("MEASUREMENT raw: $hex")
                     runCatching { GlucoseMeasurementParser.parse(value) }.onSuccess { r ->
-                        Log.d(
-                            tag,
+                        Timber.d(
                             "MEASUREMENT parsed: seq=${r.sequenceNumber} t=${r.time} " +
                                     "mgdl=${r.mgPerDl} type=${r.sampleType} loc=${r.sampleLocation} " +
                                     "status=0x%04x ctrlSolution=${r.isControlSolution}".format(r.sensorStatus)
@@ -406,14 +403,14 @@ class GlucoseGattClient(
                     measurements.trySend(value.copyOf())
                 }
                 GlucoseUuids.GLUCOSE_MEASUREMENT_CONTEXT -> {
-                    Log.d(tag, "CONTEXT raw: $hex")
+                    Timber.d("CONTEXT raw: $hex")
                     contexts.trySend(value.copyOf())
                 }
                 GlucoseUuids.RACP -> {
-                    Log.d(tag, "RACP raw: $hex")
+                    Timber.d("RACP raw: $hex")
                     racpIndications.trySend(value.copyOf())
                 }
-                else -> Log.d(tag, "Notify ${characteristic.uuid}: $hex")
+                else -> Timber.d("Notify ${characteristic.uuid}: $hex")
             }
         }
 

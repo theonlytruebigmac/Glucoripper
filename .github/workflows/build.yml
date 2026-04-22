@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  assemble-debug:
-    name: Assemble debug APK
+  build:
+    name: Build & test
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -35,13 +35,32 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+      - name: Run unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
 
-      - name: Upload APK
+      - name: Assemble debug APKs (phone + wear)
+        run: ./gradlew :app:assembleDebug :wear:assembleDebug --stacktrace
+
+      - name: Upload test reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-${{ github.sha }}
+          path: app/build/reports/tests/
+          retention-days: 7
+
+      - name: Upload phone APK
         uses: actions/upload-artifact@v4
         with:
           name: glucoripper-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload wear APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: glucoripper-wear-debug-${{ github.sha }}
+          path: wear/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 14

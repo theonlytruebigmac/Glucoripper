@@ -3,7 +3,6 @@ package com.syschimp.glucoripper.sync
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
-import android.util.Log
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.ble.GlucoseGattClient
 import com.syschimp.glucoripper.ble.GlucoseRecord
@@ -16,9 +15,9 @@ import com.syschimp.glucoripper.data.SyncHistoryEntry
 import com.syschimp.glucoripper.wear.WearBridge
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 
 class SyncCoordinator(private val context: Context) {
-    private val tag = "SyncCoordinator"
     private val syncState = SyncState(context)
     private val staging = StagingStore(context)
     private val history = SyncHistory(context)
@@ -49,10 +48,10 @@ class SyncCoordinator(private val context: Context) {
 
             if (forceFull) syncState.reset(address)
             val checkpoint = syncState.lastSequence(address)
-            Log.i(tag, "Syncing $address, checkpoint=$checkpoint forceFull=$forceFull")
+            Timber.i("Syncing $address, checkpoint=$checkpoint forceFull=$forceFull")
 
             val records = GlucoseGattClient(context, device).pullRecords(checkpoint)
-            Log.i(tag, "Pulled ${records.size} record(s)")
+            Timber.i("Pulled ${records.size} record(s)")
 
             val (measured, control) = records.partition {
                 !it.isControlSolution && it.mgPerDl != null
@@ -70,7 +69,7 @@ class SyncCoordinator(private val context: Context) {
             val autoMode = prefs.flow.first().autoPushMode
             if (autoMode == AutoPushMode.AFTER_SYNC) {
                 runCatching { pusher.push() }
-                    .onFailure { Log.w(tag, "Auto-push after sync failed", it) }
+                    .onFailure { Timber.w(it, "Auto-push after sync failed") }
             }
 
             SyncResult(

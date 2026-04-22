@@ -1,15 +1,16 @@
 package com.syschimp.glucoripper.wear
 
 import android.content.Context
-import android.util.Log
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.Preferences
 import com.syschimp.glucoripper.health.HealthConnectRepository
+import com.syschimp.glucoripper.shared.WearKeys
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.tasks.await
+import timber.log.Timber
 import java.time.Duration
 import java.time.Instant
 
@@ -23,32 +24,18 @@ import java.time.Instant
  */
 object WearBridge {
 
-    private const val TAG = "WearBridge"
-    private const val PATH = "/glucose/latest"
     private const val WINDOW_HOURS = 24L * 7L
     private const val MAX_WINDOW_POINTS = 500
 
-    // Keys must match com.syschimp.glucoripper.wear.data.WearPaths on the watch.
-    private const val KEY_TIME = "time"
-    private const val KEY_MGDL = "mgDl"
-    private const val KEY_MEAL = "meal"
-    private const val KEY_LOW = "targetLow"
-    private const val KEY_HIGH = "targetHigh"
-    private const val KEY_UNIT = "unit"
-    private const val KEY_WIN_TIMES = "winTimes"
-    private const val KEY_WIN_VALUES = "winMgDls"
-    private const val KEY_WIN_MEALS = "winMeals"
-    private const val KEY_LAST_SYNC = "lastSync"
-    private const val KEY_FASTING_LOW = "fastingLow"
-    private const val KEY_FASTING_HIGH = "fastingHigh"
-    private const val KEY_PRE_MEAL_LOW = "preMealLow"
-    private const val KEY_PRE_MEAL_HIGH = "preMealHigh"
-    private const val KEY_POST_MEAL_LOW = "postMealLow"
-    private const val KEY_POST_MEAL_HIGH = "postMealHigh"
+    // Fingerprint of the last pushed payload (excluding KEY_LAST_SYNC, which is
+    // just a liveness timestamp and would defeat dedup). DataClient itself
+    // dedupes identical DataItems, but gating here avoids the Play Services RPC
+    // entirely when nothing user-visible has changed.
+    @Volatile private var lastFingerprint: String? = null
 
     suspend fun push(context: Context) {
         runCatching { pushInternal(context) }
-            .onFailure { Log.w(TAG, "Wear push failed: ${it.message}") }
+            .onFailure { Timber.w(it, "Wear push failed") }
     }
 
     private suspend fun pushInternal(context: Context) {
@@ -65,36 +52,47 @@ object WearBridge {
             .sortedBy { it.time }
             .take(MAX_WINDOW_POINTS)
 
-        val req = PutDataMapRequest.create(PATH).apply {
-            dataMap.putLong(KEY_TIME, latest.time.toEpochMilli())
-            dataMap.putDouble(KEY_MGDL, latest.level.inMilligramsPerDeciliter)
-            dataMap.putInt(KEY_MEAL, latest.relationToMeal)
-            dataMap.putDouble(KEY_LOW, prefs.targetLowMgDl)
-            dataMap.putDouble(KEY_HIGH, prefs.targetHighMgDl)
-            dataMap.putString(KEY_UNIT, prefs.unit.wireName)
-            dataMap.putLongArray(
-                KEY_WIN_TIMES,
-                window.map { it.time.toEpochMilli() }.toLongArray(),
-            )
-            dataMap.putFloatArray(
-                KEY_WIN_VALUES,
-                window.map { it.level.inMilligramsPerDeciliter.toFloat() }.toFloatArray(),
-            )
-            dataMap.putIntegerArrayList(
-                KEY_WIN_MEALS,
-                ArrayList(window.map { it.relationToMeal }),
-            )
-            dataMap.putDouble(KEY_FASTING_LOW, prefs.fastingLowMgDl)
-            dataMap.putDouble(KEY_FASTING_HIGH, prefs.fastingHighMgDl)
-            dataMap.putDouble(KEY_PRE_MEAL_LOW, prefs.preMealLowMgDl)
-            dataMap.putDouble(KEY_PRE_MEAL_HIGH, prefs.preMealHighMgDl)
-            dataMap.putDouble(KEY_POST_MEAL_LOW, prefs.postMealLowMgDl)
-            dataMap.putDouble(KEY_POST_MEAL_HIGH, prefs.postMealHighMgDl)
-            dataMap.putLong(KEY_LAST_SYNC, System.currentTimeMillis())
+        val winTimes = window.map { it.time.toEpochMilli() }.toLongArray()
+        val winValues = window.map { it.level.inMilligramsPerDeciliter.toFloat() }.toFloatArray()
+        val winMeals = window.map { it.relationToMeal }
+
+        val fingerprint = listOf(
+            latest.time.toEpochMilli(),
+            latest.level.inMilligramsPerDeciliter,
+            latest.relationToMeal,
+            prefs.targetLowMgDl, prefs.targetHighMgDl,
+            prefs.unit.wireName,
+            prefs.fastingLowMgDl, prefs.fastingHighMgDl,
+            prefs.preMealLowMgDl, prefs.preMealHighMgDl,
+            prefs.postMealLowMgDl, prefs.postMealHighMgDl,
+            winTimes.contentHashCode(),
+            winValues.contentHashCode(),
+            winMeals.hashCode(),
+        ).joinToString("|")
+        if (fingerprint == lastFingerprint) return
+
+        val req = PutDataMapRequest.create(WearKeys.PATH_LATEST).apply {
+            dataMap.putLong(WearKeys.KEY_TIME, latest.time.toEpochMilli())
+            dataMap.putDouble(WearKeys.KEY_MGDL, latest.level.inMilligramsPerDeciliter)
+            dataMap.putInt(WearKeys.KEY_MEAL, latest.relationToMeal)
+            dataMap.putDouble(WearKeys.KEY_LOW, prefs.targetLowMgDl)
+            dataMap.putDouble(WearKeys.KEY_HIGH, prefs.targetHighMgDl)
+            dataMap.putString(WearKeys.KEY_UNIT, prefs.unit.wireName)
+            dataMap.putLongArray(WearKeys.KEY_WIN_TIMES, winTimes)
+            dataMap.putFloatArray(WearKeys.KEY_WIN_VALUES, winValues)
+            dataMap.putIntegerArrayList(WearKeys.KEY_WIN_MEALS, ArrayList(winMeals))
+            dataMap.putDouble(WearKeys.KEY_FASTING_LOW, prefs.fastingLowMgDl)
+            dataMap.putDouble(WearKeys.KEY_FASTING_HIGH, prefs.fastingHighMgDl)
+            dataMap.putDouble(WearKeys.KEY_PRE_MEAL_LOW, prefs.preMealLowMgDl)
+            dataMap.putDouble(WearKeys.KEY_PRE_MEAL_HIGH, prefs.preMealHighMgDl)
+            dataMap.putDouble(WearKeys.KEY_POST_MEAL_LOW, prefs.postMealLowMgDl)
+            dataMap.putDouble(WearKeys.KEY_POST_MEAL_HIGH, prefs.postMealHighMgDl)
+            dataMap.putLong(WearKeys.KEY_LAST_SYNC, System.currentTimeMillis())
         }
 
         val request = req.asPutDataRequest().setUrgent()
         Wearable.getDataClient(context).putDataItem(request).await()
+        lastFingerprint = fingerprint
     }
 
     private val GlucoseUnit.wireName: String

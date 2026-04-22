@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Glucoripper"
 include(":app")
 include(":wear")
+include(":shared")

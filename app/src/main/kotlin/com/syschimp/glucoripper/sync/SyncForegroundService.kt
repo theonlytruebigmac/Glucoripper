@@ -9,7 +9,6 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.getSystemService
 import com.syschimp.glucoripper.R
@@ -19,13 +18,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import timber.log.Timber
 
 /**
  * Short-lived foreground service: fired by [com.syschimp.glucoripper.companion.MeterCompanionService]
  * when the meter comes into range. Runs one sync and stops itself.
  */
 class SyncForegroundService : Service() {
-    private val tag = "SyncService"
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var currentJob: Job? = null
 
@@ -35,7 +34,7 @@ class SyncForegroundService : Service() {
         val address = intent?.getStringExtra(EXTRA_ADDRESS)
         val forceFull = intent?.getBooleanExtra(EXTRA_FORCE_FULL, false) == true
         if (address.isNullOrBlank()) {
-            Log.w(tag, "Missing meter address; stopping")
+            Timber.w("Missing meter address; stopping")
             stopSelf(startId)
             return START_NOT_STICKY
         }
@@ -43,7 +42,7 @@ class SyncForegroundService : Service() {
         startAsForeground()
 
         if (currentJob?.isActive == true) {
-            Log.i(tag, "Sync already running; ignoring duplicate trigger")
+            Timber.i("Sync already running; ignoring duplicate trigger")
             return START_NOT_STICKY
         }
 
@@ -52,8 +51,7 @@ class SyncForegroundService : Service() {
                 val result = SyncCoordinator(applicationContext).runOnce(address, forceFull)
                 result
                     .onSuccess {
-                        Log.i(
-                            tag,
+                        Timber.i(
                             "Sync ok: pulled=${it.pulled} staged=${it.staged} " +
                                     "skippedCtrl=${it.skippedControlSolutions} highest=${it.highestSequence}"
                         )
@@ -63,7 +61,7 @@ class SyncForegroundService : Service() {
                         )
                     }
                     .onFailure {
-                        Log.e(tag, "Sync failed", it)
+                        Timber.e(it, "Sync failed")
                         notifyResult(
                             title = getString(R.string.notif_sync_failed),
                             text = it.message ?: "Unknown error",

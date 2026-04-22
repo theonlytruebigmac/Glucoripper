@@ -1,5 +1,6 @@
 package com.syschimp.glucoripper.ble
 
+import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
@@ -116,8 +117,8 @@ object GlucoseMeasurementParser {
             require(buf.remaining() >= 3) { "Missing concentration + type/location" }
             val raw = decodeSfloat(buf.short)
             mgPerDl = if (flags and FLAG_UNITS_MOL_PER_L != 0) {
-                // mol/L → mg/dL (assume glucose, 180.156 g/mol; mg/dL = mmol/L × 18.0156)
-                raw * 1000.0 * 18.0156
+                // mol/L → mmol/L → mg/dL (glucose molar mass ≈ 180.156 g/mol).
+                raw * 1000.0 * MGDL_PER_MMOL
             } else {
                 // kg/L → mg/dL; kg/L × 100_000 = mg/dL
                 raw * 100_000.0

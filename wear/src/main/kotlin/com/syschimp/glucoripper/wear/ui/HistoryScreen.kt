@@ -188,7 +188,7 @@ private fun buildReadingList(payload: GlucosePayload): List<HistoryRow> {
         val (low, high) = payload.targetRangeFor(relation)
         val band = classify(mgDl, low, high)
         result += HistoryRow.Reading(
-            key = "r-$i-${times[i]}",
+            key = "r-${times[i]}",
             valueText = formatGlucose(mgDl, payload.unit),
             unitText = unitLabel(payload.unit),
             timeText = ldt.format(TIME_FMT),

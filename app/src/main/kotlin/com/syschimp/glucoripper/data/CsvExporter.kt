@@ -3,6 +3,7 @@ package com.syschimp.glucoripper.data
 import android.content.Context
 import android.net.Uri
 import androidx.health.connect.client.records.BloodGlucoseRecord
+import com.syschimp.glucoripper.shared.mgDlToMmol
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 

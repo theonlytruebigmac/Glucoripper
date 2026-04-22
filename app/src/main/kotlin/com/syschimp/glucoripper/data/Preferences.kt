@@ -183,9 +183,3 @@ fun UserPreferences.targetRangeFor(mealRelation: Int): Pair<Double, Double> = wh
         postMealLowMgDl to postMealHighMgDl
     else -> targetLowMgDl to targetHighMgDl
 }
-
-/** 1 mmol/L of glucose ≈ 18.0156 mg/dL. */
-const val MGDL_PER_MMOL = 18.0156
-
-fun Double.mgDlToMmol(): Double = this / MGDL_PER_MMOL
-fun Double.mmolToMgDl(): Double = this * MGDL_PER_MMOL
