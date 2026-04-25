@@ -25,11 +25,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.syschimp.glucoripper.sync.SyncBus
 import com.syschimp.glucoripper.ui.nav.TopDestination
 import com.syschimp.glucoripper.ui.screens.DashboardScreen
 import com.syschimp.glucoripper.ui.screens.HistoryScreen
 import com.syschimp.glucoripper.ui.screens.InsightsScreen
 import com.syschimp.glucoripper.ui.screens.SettingsScreen
+import kotlinx.coroutines.flow.merge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -43,11 +45,14 @@ fun MainScreen(
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(state.lastMessage) {
-        // Call showSnackbar directly (no wrapping scope.launch) so that the
-        // LaunchedEffect cancelling on a new message also dismisses the prior
-        // snackbar, preventing them from stacking on rapid state changes.
-        state.lastMessage?.let { msg -> snackbarHostState.showSnackbar(msg) }
+    // Consume snackbar messages from two one-shot sources: SyncBus.messages for
+    // sync results, and viewModel.snackbarMessages for ViewModel-driven events
+    // (push success/failure). Both are SharedFlows so each message fires exactly
+    // once — no resurfacing on app restart, no duplicate-string swallowing.
+    LaunchedEffect(Unit) {
+        merge(SyncBus.messages, viewModel.snackbarMessages).collect { msg ->
+            snackbarHostState.showSnackbar(msg)
+        }
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()

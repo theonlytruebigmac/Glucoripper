@@ -85,7 +85,6 @@ class MainActivity : ComponentActivity() {
     private fun requestRuntimePermissions() {
         val needed = buildList {
             add(Manifest.permission.BLUETOOTH_CONNECT)
-            add(Manifest.permission.BLUETOOTH_SCAN)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 add(Manifest.permission.POST_NOTIFICATIONS)
             }

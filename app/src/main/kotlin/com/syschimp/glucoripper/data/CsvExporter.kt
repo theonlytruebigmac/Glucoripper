@@ -6,6 +6,7 @@ import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.shared.mgDlToMmol
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 object CsvExporter {
     private val ts = DateTimeFormatter.ISO_INSTANT
@@ -21,9 +22,9 @@ object CsvExporter {
                 w.append(',')
                 w.append(csvField(r.time.atZone(zone).toLocalDateTime().toString()))
                 w.append(',')
-                w.append("%.1f".format(mgDl))
+                w.append(String.format(Locale.US, "%.1f", mgDl))
                 w.append(',')
-                w.append("%.2f".format(mgDl.mgDlToMmol()))
+                w.append(String.format(Locale.US, "%.2f", mgDl.mgDlToMmol()))
                 w.append(',')
                 w.append(csvField(mealString(r.relationToMeal)))
                 w.append(',')

@@ -2,6 +2,7 @@ package com.syschimp.glucoripper.wear.ui
 
 import androidx.compose.ui.graphics.Color
 import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
+import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
 import java.time.Duration
@@ -16,12 +17,15 @@ internal val AccentTeal = Color(0xFF4FD8EB)
 
 internal data class Band(val label: String, val color: Color)
 
-internal fun classify(mgDl: Double, low: Double, high: Double): Band = when {
-    mgDl <= 0.0 -> Band("—", Color.Gray)
-    mgDl < low -> Band("Low", GlucoseLow)
-    mgDl <= high -> Band("In range", GlucoseInRange)
-    mgDl < 180.0 -> Band("Elevated", GlucoseElevated)
-    else -> Band("High", GlucoseHigh)
+internal fun classify(mgDl: Double, low: Double, high: Double): Band {
+    val highAlarm = glucoseHighAlarmCutoff(high)
+    return when {
+        mgDl <= 0.0 -> Band("—", Color.Gray)
+        mgDl < low -> Band("Low", GlucoseLow)
+        mgDl <= high -> Band("In range", GlucoseInRange)
+        mgDl < highAlarm -> Band("Elevated", GlucoseElevated)
+        else -> Band("High", GlucoseHigh)
+    }
 }
 
 internal fun formatGlucose(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
@@ -56,18 +60,27 @@ internal fun relativeTime(t: Instant, now: Instant = Instant.now()): String {
 
 /**
  * Direction of change between the latest reading and the most recent reading at
- * least [minGapMinutes] before it. Mirrors the trend arrow used by the phone app
- * and the complication service. Returns null when the window is too thin.
+ * least [minGapMinutes] before it (and at most [maxGapMinutes] before it).
+ * Returns null when no in-window prior reading exists — without the upper bound
+ * we'd happily compare today's reading against yesterday's and call a 16 mg/dL
+ * delta a "trend".
  */
-internal fun trendDelta(payload: GlucosePayload, minGapMinutes: Long = 15): Float? {
+internal fun trendDelta(
+    payload: GlucosePayload,
+    minGapMinutes: Long = 15,
+    maxGapMinutes: Long = 60,
+): Float? {
     val v = payload.windowMgDls
     val t = payload.windowTimesMillis
     if (v.size < 2) return null
     val latestIdx = v.size - 1
-    val gapMs = minGapMinutes * 60_000L
+    val minGapMs = minGapMinutes * 60_000L
+    val maxGapMs = maxGapMinutes * 60_000L
     var priorIdx = -1
     for (i in latestIdx - 1 downTo 0) {
-        if (t[latestIdx] - t[i] >= gapMs) {
+        val gap = t[latestIdx] - t[i]
+        if (gap > maxGapMs) break
+        if (gap >= minGapMs) {
             priorIdx = i
             break
         }

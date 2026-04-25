@@ -30,6 +30,7 @@ class SyncCoordinator(private val context: Context) {
         val skippedControlSolutions: Int,
         val highestSequence: Int?,
         val anyLowBattery: Boolean,
+        val rolledOver: Boolean,
     )
 
     @SuppressLint("MissingPermission")
@@ -48,10 +49,13 @@ class SyncCoordinator(private val context: Context) {
 
             if (forceFull) syncState.reset(address)
             val checkpoint = syncState.lastSequence(address)
-            Timber.i("Syncing $address, checkpoint=$checkpoint forceFull=$forceFull")
+            val previousTotal = syncState.lastTotalCount(address)
+            Timber.i("Syncing $address, checkpoint=$checkpoint previousTotal=$previousTotal forceFull=$forceFull")
 
-            val records = GlucoseGattClient(context, device).pullRecords(checkpoint)
-            Timber.i("Pulled ${records.size} record(s)")
+            val pull = GlucoseGattClient(context, device)
+                .pullRecords(checkpoint, previousTotalCount = previousTotal)
+            val records = pull.records
+            Timber.i("Pulled ${records.size} record(s); meterTotal=${pull.totalCount} rolledOver=${pull.rolledOver}")
 
             val (measured, control) = records.partition {
                 !it.isControlSolution && it.mgPerDl != null
@@ -62,6 +66,7 @@ class SyncCoordinator(private val context: Context) {
 
             val highest = records.maxOfOrNull { it.sequenceNumber }
             if (highest != null) syncState.setLastSequence(address, highest)
+            syncState.setLastTotalCount(address, pull.totalCount)
 
             // If the user chose "after each sync" auto-push, immediately push
             // everything in staging. Swallow errors here so a failed push doesn't
@@ -78,6 +83,7 @@ class SyncCoordinator(private val context: Context) {
                 skippedControlSolutions = control.size,
                 highestSequence = highest,
                 anyLowBattery = records.any { it.wasDeviceBatteryLow },
+                rolledOver = pull.rolledOver,
             )
         }
 

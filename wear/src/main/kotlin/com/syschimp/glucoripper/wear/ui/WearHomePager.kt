@@ -11,6 +11,8 @@ import androidx.wear.compose.material.HorizontalPageIndicator
 import androidx.wear.compose.material.PageIndicatorState
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.TimeText
+import androidx.wear.compose.material.Vignette
+import androidx.wear.compose.material.VignettePosition
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 
 /**
@@ -33,6 +35,7 @@ fun WearHomePager(payload: GlucosePayload) {
 
     Scaffold(
         timeText = { TimeText() },
+        vignette = { Vignette(vignettePosition = VignettePosition.TopAndBottom) },
         pageIndicator = {
             HorizontalPageIndicator(pageIndicatorState = pageIndicatorState)
         },

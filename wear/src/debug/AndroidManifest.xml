@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
+        <!-- exported=false so a stray app on the test watch can't spam fake glucose
+             values; trigger via `adb shell am broadcast` with the fully-qualified
+             component name (see DevSeedReceiver kdoc). -->
         <receiver
             android:name=".DevSeedReceiver"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="com.syschimp.glucoripper.wear.DEV_SEED" />
             </intent-filter>

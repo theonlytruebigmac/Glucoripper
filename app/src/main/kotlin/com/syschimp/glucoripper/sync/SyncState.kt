@@ -22,16 +22,30 @@ class SyncState(private val context: Context) {
     private fun lastSyncTimeKey(address: String) =
         longPreferencesKey("last_sync_ms_${address.uppercase()}")
 
+    private fun lastTotalCountKey(address: String) =
+        intPreferencesKey("last_total_${address.uppercase()}")
+
     suspend fun lastSequence(address: String): Int? =
         context.syncStore.data.map { it[lastSequenceKey(address)] }.first()
 
+    /**
+     * Persist the latest observed sequence number. We *always* overwrite (no monotonic
+     * guard) because a meter that wraps its uint16 sequence at 65535 would otherwise
+     * leave us pinned to a stale checkpoint forever — see SyncCoordinator's rollover
+     * detection, which calls this with the post-rollover max.
+     */
     suspend fun setLastSequence(address: String, sequence: Int) {
         context.syncStore.edit { prefs ->
-            val key = lastSequenceKey(address)
-            val prev = prefs[key] ?: -1
-            if (sequence > prev) prefs[key] = sequence
+            prefs[lastSequenceKey(address)] = sequence
             prefs[lastSyncTimeKey(address)] = System.currentTimeMillis()
         }
+    }
+
+    suspend fun lastTotalCount(address: String): Int? =
+        context.syncStore.data.map { it[lastTotalCountKey(address)] }.first()
+
+    suspend fun setLastTotalCount(address: String, total: Int) {
+        context.syncStore.edit { it[lastTotalCountKey(address)] = total }
     }
 
     fun lastSyncTimeFlow(address: String): Flow<Long?> =
@@ -41,6 +55,7 @@ class SyncState(private val context: Context) {
         context.syncStore.edit {
             it.remove(lastSequenceKey(address))
             it.remove(lastSyncTimeKey(address))
+            it.remove(lastTotalCountKey(address))
         }
     }
 }

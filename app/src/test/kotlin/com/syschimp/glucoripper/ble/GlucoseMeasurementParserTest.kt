@@ -4,6 +4,8 @@ import com.google.common.truth.Truth.assertThat
 import com.syschimp.glucoripper.ble.GlucoseMeasurementParser.decodeSfloat
 import org.junit.Test
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Covers the SFLOAT + Glucose Measurement (0x2A18) + Glucose Measurement Context
@@ -43,13 +45,13 @@ class GlucoseMeasurementParserTest {
 
     @Test fun parses_minimal_record_without_optional_fields() {
         // Flag byte 0x00: no time offset, no concentration, no sensor status, no context.
-        // seq=7, 2024-03-15T10:30:00.
+        // seq=7, 2024-03-15T10:30:00. With defaultZone=UTC the instant matches the wall-clock.
         val payload = byteArrayOf(
             0x00, 0x07, 0x00,                           // flags + seq LE
             0xE8.toByte(), 0x07,                        // year 2024
             0x03, 0x0F, 0x0A, 0x1E, 0x00,               // Mar 15, 10:30:00
         )
-        val r = GlucoseMeasurementParser.parse(payload)
+        val r = GlucoseMeasurementParser.parse(payload, ZoneOffset.UTC)
         assertThat(r.sequenceNumber).isEqualTo(7)
         assertThat(r.time).isEqualTo(Instant.parse("2024-03-15T10:30:00Z"))
         assertThat(r.mgPerDl).isNull()
@@ -57,6 +59,18 @@ class GlucoseMeasurementParserTest {
         assertThat(r.sampleLocation).isNull()
         assertThat(r.sensorStatus).isEqualTo(0)
         assertThat(r.hasContextFollows).isFalse()
+    }
+
+    @Test fun missing_time_offset_falls_back_to_default_zone() {
+        // Same fixture as above. With defaultZone=America/New_York (UTC-4 on 2024-03-15
+        // since DST began Mar 10), wall-clock 10:30 EDT → 14:30 UTC.
+        val payload = byteArrayOf(
+            0x00, 0x07, 0x00,
+            0xE8.toByte(), 0x07,
+            0x03, 0x0F, 0x0A, 0x1E, 0x00,
+        )
+        val r = GlucoseMeasurementParser.parse(payload, ZoneId.of("America/New_York"))
+        assertThat(r.time).isEqualTo(Instant.parse("2024-03-15T14:30:00Z"))
     }
 
     @Test fun parses_kg_per_L_concentration_as_mg_per_dL() {

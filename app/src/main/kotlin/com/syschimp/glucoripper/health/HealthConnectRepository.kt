@@ -12,7 +12,6 @@ import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.BloodGlucose
 import com.syschimp.glucoripper.data.StagedReading
 import timber.log.Timber
-import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -35,8 +34,9 @@ class HealthConnectRepository(private val context: Context) {
 
     /**
      * Push staged readings to Health Connect. Returns the number actually inserted.
-     * Re-applies the drift-correction (future-time shift) so readings from a meter
-     * with a fast RTC still land inside HC's "not in the future" constraint.
+     * Per-record clamp: any reading whose timestamp is after `now` is shifted to
+     * `now - 1s`, so a single glitched-RTC reading can't drag the whole batch back
+     * (HC dedupes on clientRecordId, so a wrong timestamp would be sticky).
      */
     suspend fun pushStaged(readings: List<StagedReading>): Int {
         if (readings.isEmpty()) return 0
@@ -47,17 +47,16 @@ class HealthConnectRepository(private val context: Context) {
         )
 
         val now = Instant.now()
-        val maxTime = readings.maxOfOrNull { it.time }
-        val drift = if (maxTime != null && maxTime.isAfter(now)) {
-            Duration.between(now, maxTime).plusSeconds(1)
-        } else Duration.ZERO
-        if (!drift.isZero) {
-            Timber.i("Meter clock ahead by %ds; shifting timestamps back", drift.seconds)
-        }
-
         val hcRecords = readings.map { r ->
+            val effectiveTime = if (r.time.isAfter(now)) {
+                Timber.w(
+                    "Reading %s has future timestamp %s; clamping to now",
+                    r.id, r.time,
+                )
+                now.minusSeconds(1)
+            } else r.time
             BloodGlucoseRecord(
-                time = r.time.minus(drift),
+                time = effectiveTime,
                 zoneOffset = ZoneOffset.UTC,
                 level = BloodGlucose.milligramsPerDeciliter(r.mgPerDl),
                 specimenSource = r.specimenSource,

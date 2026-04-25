@@ -5,6 +5,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 
 /**
@@ -76,8 +77,14 @@ object GlucoseMeasurementParser {
     private const val FLAG_SENSOR_STATUS = 0x08
     private const val FLAG_CONTEXT_FOLLOWS = 0x10
 
-    /** @throws IllegalArgumentException if the payload is malformed. */
-    fun parse(payload: ByteArray): GlucoseRecord {
+    /**
+     * @param defaultZone Zone used to interpret the meter's wall-clock time when
+     *   the measurement does not include a time-offset field. Meters that omit
+     *   FLAG_TIME_OFFSET report local time; assuming UTC there silently shifts
+     *   the reading by the user's UTC offset.
+     * @throws IllegalArgumentException if the payload is malformed.
+     */
+    fun parse(payload: ByteArray, defaultZone: ZoneId = ZoneId.systemDefault()): GlucoseRecord {
         val buf = ByteBuffer.wrap(payload).order(ByteOrder.LITTLE_ENDIAN)
         require(buf.remaining() >= 10) { "Glucose Measurement too short: ${payload.size}" }
 
@@ -91,14 +98,11 @@ object GlucoseMeasurementParser {
         val minute = buf.get().toInt() and 0xFF
         val second = buf.get().toInt() and 0xFF
 
-        var offsetMinutes = 0
-        if (flags and FLAG_TIME_OFFSET != 0) {
+        val explicitOffsetMinutes: Int? = if (flags and FLAG_TIME_OFFSET != 0) {
             require(buf.remaining() >= 2) { "Missing time offset" }
-            offsetMinutes = buf.short.toInt()
-        }
+            buf.short.toInt()
+        } else null
 
-        // Base time is in the meter's local time. We convert to UTC instant by
-        // subtracting the offset-from-UTC the meter is reporting (which is 0 if absent).
         val base = LocalDateTime.of(
             year.coerceIn(1582, 9999),
             month.coerceIn(1, 12),
@@ -107,7 +111,11 @@ object GlucoseMeasurementParser {
             minute.coerceIn(0, 59),
             second.coerceIn(0, 59),
         )
-        val offset = ZoneOffset.ofTotalSeconds(offsetMinutes * 60)
+        val offset = if (explicitOffsetMinutes != null) {
+            ZoneOffset.ofTotalSeconds(explicitOffsetMinutes * 60)
+        } else {
+            defaultZone.rules.getOffset(base)
+        }
         val instant = base.toInstant(offset)
 
         var mgPerDl: Double? = null

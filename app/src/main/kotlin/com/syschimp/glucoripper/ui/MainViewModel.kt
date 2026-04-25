@@ -33,9 +33,14 @@ import com.syschimp.glucoripper.sync.SyncForegroundService
 import com.syschimp.glucoripper.sync.SyncState
 import com.syschimp.glucoripper.wear.WearBridge
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -57,7 +62,6 @@ data class UiState(
     val meters: List<PairedMeter> = emptyList(),
     val recentReadings: List<BloodGlucoseRecord> = emptyList(),
     val syncing: Boolean = false,
-    val lastMessage: String? = null,
     val lowBatteryFlag: Boolean = false,
     val prefs: UserPreferences = UserPreferences(
         unit = GlucoseUnit.MG_PER_DL,
@@ -86,13 +90,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    private val _snackbarMessages = MutableSharedFlow<String>(
+        replay = 0,
+        extraBufferCapacity = 4,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val snackbarMessages: SharedFlow<String> = _snackbarMessages.asSharedFlow()
+
     init {
-        // Whenever the auto-push mode changes, re-apply the WorkManager schedule.
+        // Whenever the auto-push mode changes, replace the WorkManager schedule
+        // (cancel + enqueue). distinctUntilChanged ensures we only fire on real
+        // mode transitions, not on initial collection of the prefs flow.
         viewModelScope.launch {
             prefs.flow
                 .map { it.autoPushMode }
                 .distinctUntilChanged()
-                .collect { AutoPushScheduler.apply(getApplication(), it) }
+                .drop(1)
+                .collect { AutoPushScheduler.replace(getApplication(), it) }
         }
         viewModelScope.launch {
             @Suppress("UNCHECKED_CAST")
@@ -104,6 +118,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 stagingStore.flow,
                 eventsStore.flow,
             ) as Array<kotlinx.coroutines.flow.Flow<Any?>>
+            // Track the previous "syncing" state so we only refresh the HC reading
+            // batch on the running→idle transition, not on every flow emission. The
+            // old code kicked refresh() on every keystroke when editing notes since
+            // annotations.flow re-emits while bus.running == false — and refresh()
+            // pulls up to 1000 records out of HC.
+            var wasRunning: Boolean? = null
             combine(*flows) { arr -> arr }.collect { tuple ->
                 @Suppress("UNCHECKED_CAST")
                 val p = tuple[0] as UserPreferences
@@ -121,20 +141,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         prefs = p,
                         syncHistory = h,
                         syncing = bus.running,
-                        lastMessage = bus.lastMessage ?: it.lastMessage,
                         lowBatteryFlag = bus.lastLowBatteryFlag,
                         annotations = ann,
                         staged = staged,
                         events = events,
                     )
                 }
-                if (!bus.running) refresh() // reload readings on completion
+                if (wasRunning == true && !bus.running) refresh(force = true) // sync just finished
+                wasRunning = bus.running
             }
         }
         refresh()
     }
 
-    fun refresh() {
+    private var lastRefreshMs: Long = 0L
+    private val refreshDebounceMs = 30_000L
+
+    /**
+     * Reload meters / HC permission state / readings. Debounced because the
+     * activity calls this from onResume on every config change (rotation, font
+     * scale, theme), and each call pages up to 1000 records out of HC. Pass
+     * [force]=true after a successful sync to bypass the debounce.
+     */
+    fun refresh(force: Boolean = false) {
+        val now = System.currentTimeMillis()
+        if (!force && now - lastRefreshMs < refreshDebounceMs) return
+        lastRefreshMs = now
         viewModelScope.launch {
             val meters = pairing.associations()
                 .filter { !it.address.isNullOrBlank() }
@@ -200,7 +232,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         pairing.disassociate(meter.associationId)
         viewModelScope.launch {
             syncState.reset(meter.address)
-            refresh()
+            refresh(force = true)
         }
     }
 
@@ -249,23 +281,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun pushStaged(ids: Collection<String>? = null) {
-        if (_state.value.pushing) return
         val all = _state.value.staged
         val toPush = if (ids == null) all else all.filter { it.id in ids }
         if (toPush.isEmpty()) return
-        _state.update { it.copy(pushing = true, lastMessage = "Pushing ${toPush.size} to Health Connect…") }
+        // Atomic check-and-set so two rapid taps can't both pass the guard.
+        // compareAndSet only succeeds if state hasn't changed since `current`
+        // was sampled; the loser of the race bails without starting a duplicate
+        // push (HC dedupes by clientRecordId, but the spinner state would lie).
+        while (true) {
+            val current = _state.value
+            if (current.pushing) return
+            if (_state.compareAndSet(current, current.copy(pushing = true))) break
+        }
+        _snackbarMessages.tryEmit("Pushing ${toPush.size} to Health Connect…")
         viewModelScope.launch {
             pusher.push(toPush).fold(
                 onSuccess = { report ->
-                    _state.update { it.copy(pushing = false,
-                        lastMessage = "Pushed ${report.written} to Health Connect") }
+                    _state.update { it.copy(pushing = false) }
+                    _snackbarMessages.tryEmit("Pushed ${report.written} to Health Connect")
                 },
                 onFailure = { t ->
-                    _state.update { it.copy(pushing = false,
-                        lastMessage = "Push failed: ${t.message}") }
+                    _state.update { it.copy(pushing = false) }
+                    _snackbarMessages.tryEmit("Push failed: ${t.message}")
                 },
             )
-            refresh()
+            refresh(force = true)
         }
     }
 
@@ -280,7 +320,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             runCatching { healthRepo.updateMealRelation(record, relation) }
             annotationsStore.update(clientId) { it.copy(mealOverride = relation) }
-            refresh()
+            refresh(force = true)
         }
     }
 

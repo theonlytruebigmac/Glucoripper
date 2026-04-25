@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
+import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import kotlin.math.cos
 import kotlin.math.sin
@@ -76,6 +77,7 @@ private fun WearRingGauge(payload: GlucosePayload) {
 
     val gaugeMin = 40f
     val gaugeMax = 300f
+    val highAlarm = glucoseHighAlarmCutoff(high).toFloat().coerceAtMost(gaugeMax)
     fun fractionOf(v: Float): Float =
         ((v - gaugeMin) / (gaugeMax - gaugeMin)).coerceIn(0f, 1f)
 
@@ -114,8 +116,8 @@ private fun WearRingGauge(payload: GlucosePayload) {
             val segments = listOf(
                 Triple(gaugeMin, low.toFloat(), GlucoseLow),
                 Triple(low.toFloat(), high.toFloat(), GlucoseInRange),
-                Triple(high.toFloat(), 180f.coerceAtMost(gaugeMax), GlucoseElevated),
-                Triple(180f.coerceAtMost(gaugeMax), gaugeMax, GlucoseHigh),
+                Triple(high.toFloat(), highAlarm, GlucoseElevated),
+                Triple(highAlarm, gaugeMax, GlucoseHigh),
             )
             segments.forEach { (a, b, col) ->
                 val f0 = fractionOf(a)

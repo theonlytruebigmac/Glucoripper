@@ -5,15 +5,18 @@ import android.content.ComponentName
 import android.content.Intent
 import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
+import androidx.wear.watchface.complications.data.ComplicationText
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.LongTextComplicationData
 import androidx.wear.watchface.complications.data.MonochromaticImage
+import androidx.wear.watchface.complications.data.NoDataComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.RangedValueComplicationData
 import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.datasource.ComplicationRequest
 import androidx.wear.watchface.complications.datasource.SuspendingComplicationDataSourceService
 import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
+import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.MainActivity
 import com.syschimp.glucoripper.wear.R
 import com.syschimp.glucoripper.wear.data.GlucosePayload
@@ -128,21 +131,34 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
     }
 
     private fun placeholderFor(type: ComplicationType): ComplicationData? {
-        val placeholder = PlainComplicationText.Builder("—").build()
         val cd = PlainComplicationText.Builder("No reading yet").build()
-        return when (type) {
-            ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(placeholder, cd)
-                .setTapAction(launchAppIntent()).build()
-            ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(placeholder, cd)
-                .setTapAction(launchAppIntent()).build()
-            ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(
-                value = 40f, min = 40f, max = 300f, contentDescription = cd,
-            )
-                .setText(placeholder)
+        // Wrap the typed builder in NoDataComplicationData so watch faces with a
+        // dedicated "no-data" treatment (e.g. dimmed, hidden, fallback string) can
+        // recognise the empty state instead of just rendering an em-dash.
+        val placeholderText = ComplicationText.PLACEHOLDER
+        val typed: ComplicationData = when (type) {
+            ComplicationType.SHORT_TEXT -> ShortTextComplicationData.Builder(placeholderText, cd)
+                .setTitle(PlainComplicationText.Builder("Glucose").build())
+                .setMonochromaticImage(monochromaticIcon())
                 .setTapAction(launchAppIntent())
                 .build()
-            else -> null
+            ComplicationType.LONG_TEXT -> LongTextComplicationData.Builder(placeholderText, cd)
+                .setTitle(PlainComplicationText.Builder("Glucose · waiting").build())
+                .setMonochromaticImage(monochromaticIcon())
+                .setTapAction(launchAppIntent())
+                .build()
+            ComplicationType.RANGED_VALUE -> RangedValueComplicationData.Builder(
+                value = RangedValueComplicationData.PLACEHOLDER,
+                min = 40f, max = 300f, contentDescription = cd,
+            )
+                .setText(placeholderText)
+                .setTitle(PlainComplicationText.Builder("Glucose").build())
+                .setMonochromaticImage(monochromaticIcon())
+                .setTapAction(launchAppIntent())
+                .build()
+            else -> return null
         }
+        return NoDataComplicationData(typed)
     }
 
     private fun launchAppIntent(): PendingIntent {
@@ -168,11 +184,14 @@ class GlucoseComplicationService : SuspendingComplicationDataSourceService() {
         GlucoseUnit.MMOL_PER_L -> "mmol/L"
     }
 
-    private fun classifyLabel(mgDl: Double, low: Double, high: Double): String = when {
-        mgDl < low -> "Low"
-        mgDl <= high -> "In range"
-        mgDl < 180 -> "Elevated"
-        else -> "High"
+    private fun classifyLabel(mgDl: Double, low: Double, high: Double): String {
+        val highAlarm = glucoseHighAlarmCutoff(high)
+        return when {
+            mgDl < low -> "Low"
+            mgDl <= high -> "In range"
+            mgDl < highAlarm -> "Elevated"
+            else -> "High"
+        }
     }
 
     private fun relativeTime(t: Instant): String {

@@ -57,27 +57,39 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Assemble signed release APK
+      - name: Assemble signed release APKs (phone + wear)
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew :app:assembleRelease --stacktrace
+        run: ./gradlew :app:assembleRelease :wear:assembleRelease --stacktrace
 
-      - name: Rename APK
+      - name: Rename APKs
         id: apk
         run: |
-          src=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
-          dest="glucoripper-${{ steps.tag.outputs.value }}.apk"
-          cp "$src" "$dest"
-          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          phone_src=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          wear_src=$(ls wear/build/outputs/apk/release/*.apk | head -n 1)
+          phone_dest="glucoripper-${{ steps.tag.outputs.value }}.apk"
+          wear_dest="glucoripper-wear-${{ steps.tag.outputs.value }}.apk"
+          cp "$phone_src" "$phone_dest"
+          cp "$wear_src" "$wear_dest"
+          echo "phone=$phone_dest" >> "$GITHUB_OUTPUT"
+          echo "wear=$wear_dest" >> "$GITHUB_OUTPUT"
 
-      - name: Upload APK as workflow artifact
+      - name: Upload phone APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.apk.outputs.path }}
-          path: ${{ steps.apk.outputs.path }}
+          name: ${{ steps.apk.outputs.phone }}
+          path: ${{ steps.apk.outputs.phone }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload wear APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.wear }}
+          path: ${{ steps.apk.outputs.wear }}
           if-no-files-found: error
           retention-days: 90
 
@@ -87,4 +99,6 @@ jobs:
           tag_name: ${{ steps.tag.outputs.value }}
           name: ${{ steps.tag.outputs.value }}
           generate_release_notes: true
-          files: ${{ steps.apk.outputs.path }}
+          files: |
+            ${{ steps.apk.outputs.phone }}
+            ${{ steps.apk.outputs.wear }}

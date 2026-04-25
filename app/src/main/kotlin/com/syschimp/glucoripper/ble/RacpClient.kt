@@ -23,6 +23,10 @@ object RacpClient {
     fun reportAll(): ByteArray =
         byteArrayOf(OP_REPORT_STORED_RECORDS.toByte(), OPERATOR_ALL.toByte())
 
+    /** Build "report number of stored records (all)" — used to detect rollover. */
+    fun numberOfRecordsAll(): ByteArray =
+        byteArrayOf(OP_REPORT_NUMBER_OF_RECORDS.toByte(), OPERATOR_ALL.toByte())
+
     /** Build "report stored records with sequence number >= minSequence". */
     fun reportFrom(minSequence: Int): ByteArray {
         val buf = ByteBuffer.allocate(5).order(ByteOrder.LITTLE_ENDIAN)

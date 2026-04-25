@@ -95,7 +95,7 @@ class GlucoseTileService : TileService() {
 
     private fun pixelsFor(version: String, payload: GlucosePayload): ByteArray {
         cachedPixels?.takeIf { cachedVersion == version }?.let { return it }
-        val pixels = TileGaugeRenderer.renderRgb565(payload, GAUGE_SIZE_PX)
+        val pixels = TileGaugeRenderer.renderArgb8888(payload, GAUGE_SIZE_PX)
         cachedVersion = version
         cachedPixels = pixels
         return pixels
@@ -116,7 +116,7 @@ class GlucoseTileService : TileService() {
                             .setData(pixels)
                             .setWidthPx(GAUGE_SIZE_PX)
                             .setHeightPx(GAUGE_SIZE_PX)
-                            .setFormat(ResourceBuilders.IMAGE_FORMAT_RGB_565)
+                            .setFormat(ResourceBuilders.IMAGE_FORMAT_ARGB_8888)
                             .build(),
                     )
                     .build(),
@@ -126,24 +126,73 @@ class GlucoseTileService : TileService() {
     }
 
     private fun buildTile(payload: GlucosePayload): TileBuilders.Tile {
-        val layout = if (payload.latestTimeMillis == 0L) emptyLayout() else readingLayout(payload)
+        val timeline = if (payload.latestTimeMillis == 0L) {
+            singleEntryTimeline(emptyLayout())
+        } else {
+            agedReadingTimeline(payload)
+        }
         return TileBuilders.Tile.Builder()
             .setResourcesVersion(resourcesVersion(payload))
             .setFreshnessIntervalMillis(Duration.ofMinutes(FRESHNESS_MINUTES).toMillis())
-            .setTileTimeline(
-                TimelineBuilders.Timeline.Builder()
-                    .addTimelineEntry(
-                        TimelineBuilders.TimelineEntry.Builder()
-                            .setLayout(
-                                LayoutElementBuilders.Layout.Builder()
-                                    .setRoot(layout)
-                                    .build(),
-                            )
-                            .build(),
-                    )
+            .setTileTimeline(timeline)
+            .build()
+    }
+
+    private fun singleEntryTimeline(root: LayoutElement): TimelineBuilders.Timeline =
+        TimelineBuilders.Timeline.Builder()
+            .addTimelineEntry(
+                TimelineBuilders.TimelineEntry.Builder()
+                    .setLayout(LayoutElementBuilders.Layout.Builder().setRoot(root).build())
                     .build(),
             )
             .build()
+
+    /**
+     * Builds a timeline whose entries swap the "Xm ago" label at the boundaries
+     * where the value would naturally change. The protolayout host keeps showing
+     * the active entry without re-issuing onTileRequest, so the label stays fresh
+     * for the full freshness interval instead of freezing at the value computed
+     * when the tile was last requested.
+     */
+    private fun agedReadingTimeline(payload: GlucosePayload): TimelineBuilders.Timeline {
+        val readingMs = payload.latestTimeMillis
+        // Boundary offsets (minutes from the reading) where the label changes.
+        // Stop at 7 days; after that the "> 1w" entry runs without an upper bound.
+        val minuteBoundaries = buildList {
+            add(0L)                    // "just now" until +1m
+            add(1L)                    // "1m ago"
+            for (m in 2L..59L) add(m)  // "Nm ago"
+            for (h in 1L..23L) add(h * 60)
+            for (d in 1L..6L) add(d * 24 * 60)
+            add(7L * 24 * 60)
+        }.distinct().sorted()
+
+        val builder = TimelineBuilders.Timeline.Builder()
+        for (i in minuteBoundaries.indices) {
+            val from = readingMs + minuteBoundaries[i] * 60_000L
+            val to = if (i < minuteBoundaries.size - 1) {
+                readingMs + minuteBoundaries[i + 1] * 60_000L
+            } else {
+                Long.MAX_VALUE
+            }
+            val labelInstant = Instant.ofEpochMilli(from + 1_000) // +1s to avoid edge ambiguity
+            val label = relativeTime(payload.latestInstant, labelInstant)
+            val entry = TimelineBuilders.TimelineEntry.Builder()
+                .setLayout(
+                    LayoutElementBuilders.Layout.Builder()
+                        .setRoot(readingLayout(payload, label))
+                        .build(),
+                )
+                .also { eb ->
+                    val validity = TimelineBuilders.TimeInterval.Builder()
+                        .setStartMillis(from)
+                    if (to != Long.MAX_VALUE) validity.setEndMillis(to)
+                    eb.setValidity(validity.build())
+                }
+                .build()
+            builder.addTimelineEntry(entry)
+        }
+        return builder.build()
     }
 
     private fun emptyLayout(): LayoutElement =
@@ -157,8 +206,10 @@ class GlucoseTileService : TileService() {
             .addContent(label("Waiting for phone sync…", 12f, dimColor()))
             .build()
 
-    private fun readingLayout(payload: GlucosePayload): LayoutElement {
-        val ago = relativeTime(payload.latestInstant)
+    private fun readingLayout(
+        payload: GlucosePayload,
+        ago: String = relativeTime(payload.latestInstant),
+    ): LayoutElement {
         val inner = Column.Builder()
             .setWidth(DimensionBuilders.wrap())
             .setHeight(DimensionBuilders.wrap())
@@ -232,8 +283,8 @@ class GlucoseTileService : TileService() {
 
     private fun dimColor(): Int = 0xFFBFC8CD.toInt()
 
-    private fun relativeTime(t: Instant): String {
-        val d = Duration.between(t, Instant.now())
+    private fun relativeTime(t: Instant, now: Instant = Instant.now()): String {
+        val d = Duration.between(t, now)
         return when {
             d.isNegative -> "just now"
             d.toMinutes() < 1 -> "just now"

@@ -1,38 +1,40 @@
 package com.syschimp.glucoripper.wear
 
+import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.runtime.collectAsState
+import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseStore
 import com.syschimp.glucoripper.wear.ui.WearHomePager
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 
 class MainActivity : ComponentActivity() {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val viewModel: GlucoseViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val store = GlucoseStore(applicationContext)
         setContent {
-            val state by remember {
-                store.flow.stateIn(scope, SharingStarted.Eagerly, GlucosePayload.Empty)
-            }.collectAsState()
+            val state by viewModel.state.collectAsStateWithLifecycle()
             WearHomePager(state)
         }
     }
+}
 
-    override fun onDestroy() {
-        scope.cancel()
-        super.onDestroy()
-    }
+class GlucoseViewModel(app: Application) : AndroidViewModel(app) {
+    private val store = GlucoseStore(app)
+
+    val state: StateFlow<GlucosePayload> = store.flow.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000),
+        GlucosePayload.Empty,
+    )
 }

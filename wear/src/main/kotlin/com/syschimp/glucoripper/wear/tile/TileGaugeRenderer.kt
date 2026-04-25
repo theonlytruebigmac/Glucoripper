@@ -8,11 +8,11 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import com.syschimp.glucoripper.shared.MGDL_PER_MMOL
+import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
 import java.nio.ByteBuffer
 import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
 
 /**
@@ -20,8 +20,11 @@ import kotlin.math.sin
  * a [Bitmap] so it can be surfaced as an inline image in the protolayout tile.
  * Tiles can't host Compose, so the drawing is ported to [android.graphics.Canvas].
  *
- * Renders raw RGB_565 pixel bytes — protolayout's InlineImageResource does not
+ * Renders raw ARGB_8888 pixel bytes — protolayout's InlineImageResource does not
  * decode PNG/JPEG, it expects raw pixels in one of its IMAGE_FORMAT_* variants.
+ * RGB_565 was used previously but lost the alpha channel, leaving a black square
+ * around the gauge whenever the watch face had a non-black tile background or
+ * a lighter ambient theme.
  */
 object TileGaugeRenderer {
 
@@ -38,12 +41,9 @@ object TileGaugeRenderer {
     private const val TEXT_COLOR = 0xFFE1E3E6.toInt()
     private const val TEXT_DIM = 0xB3E1E3E6.toInt()
 
-    fun renderRgb565(payload: GlucosePayload, sizePx: Int): ByteArray {
-        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.RGB_565)
+    fun renderArgb8888(payload: GlucosePayload, sizePx: Int): ByteArray {
+        val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
-        // RGB_565 has no alpha; pre-fill so antialiased edges blend onto black
-        // instead of leaving undefined pixels.
-        canvas.drawColor(Color.BLACK)
         draw(canvas, payload, sizePx.toFloat())
         val buf = ByteBuffer.allocate(bmp.byteCount)
         bmp.copyPixelsToBuffer(buf)
@@ -53,6 +53,7 @@ object TileGaugeRenderer {
 
     private fun draw(canvas: Canvas, payload: GlucosePayload, size: Float) {
         val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
+        val highAlarm = glucoseHighAlarmCutoff(high).toFloat().coerceAtMost(GAUGE_MAX)
         val stroke = size * 0.067f
         val inset = stroke / 2f + size * 0.027f
         val rect = RectF(inset, inset, size - inset, size - inset)
@@ -73,8 +74,8 @@ object TileGaugeRenderer {
         val segments = listOf(
             Triple(GAUGE_MIN, low.toFloat(), LOW_COLOR),
             Triple(low.toFloat(), high.toFloat(), IN_RANGE_COLOR),
-            Triple(high.toFloat(), min(180f, GAUGE_MAX), ELEVATED_COLOR),
-            Triple(min(180f, GAUGE_MAX), GAUGE_MAX, HIGH_COLOR),
+            Triple(high.toFloat(), highAlarm, ELEVATED_COLOR),
+            Triple(highAlarm, GAUGE_MAX, HIGH_COLOR),
         )
         segments.forEach { (a, b, col) ->
             val f0 = fractionOf(a)
@@ -92,7 +93,7 @@ object TileGaugeRenderer {
 
         val pointerFraction = fractionOf(payload.latestMgDl.toFloat())
         drawPointer(canvas, size, rect, stroke, pointerFraction)
-        drawCenter(canvas, payload, low, high, size)
+        drawCenter(canvas, payload, low, high, highAlarm.toDouble(), size)
     }
 
     private fun drawPointer(
@@ -134,16 +135,17 @@ object TileGaugeRenderer {
         payload: GlucosePayload,
         low: Double,
         high: Double,
+        highAlarm: Double,
         size: Float,
     ) {
         val cx = size / 2f
         val unitPaint = textPaint(size * 0.063f, TEXT_DIM, bold = false)
         val valuePaint = textPaint(size * 0.22f, TEXT_COLOR, bold = true)
-        val bandPaint = textPaint(size * 0.073f, bandColor(payload.latestMgDl, low, high), bold = true)
+        val bandPaint = textPaint(size * 0.073f, bandColor(payload.latestMgDl, low, high, highAlarm), bold = true)
 
         val unitText = "Current (${unitLabel(payload.unit)})"
         val valueText = formatValue(payload.latestMgDl, payload.unit)
-        val bandText = bandLabel(payload.latestMgDl, low, high)
+        val bandText = bandLabel(payload.latestMgDl, low, high, highAlarm)
 
         val unitFm = unitPaint.fontMetrics
         val valueFm = valuePaint.fontMetrics
@@ -176,19 +178,19 @@ object TileGaugeRenderer {
     private fun fractionOf(v: Float): Float =
         ((v - GAUGE_MIN) / (GAUGE_MAX - GAUGE_MIN)).coerceIn(0f, 1f)
 
-    private fun bandColor(mgDl: Double, low: Double, high: Double): Int = when {
+    private fun bandColor(mgDl: Double, low: Double, high: Double, highAlarm: Double): Int = when {
         mgDl <= 0 -> Color.GRAY
         mgDl < low -> LOW_COLOR
         mgDl <= high -> IN_RANGE_COLOR
-        mgDl < 180 -> ELEVATED_COLOR
+        mgDl < highAlarm -> ELEVATED_COLOR
         else -> HIGH_COLOR
     }
 
-    private fun bandLabel(mgDl: Double, low: Double, high: Double): String = when {
+    private fun bandLabel(mgDl: Double, low: Double, high: Double, highAlarm: Double): String = when {
         mgDl <= 0 -> "—"
         mgDl < low -> "Low"
         mgDl <= high -> "In range"
-        mgDl < 180 -> "Elevated"
+        mgDl < highAlarm -> "Elevated"
         else -> "High"
     }
 

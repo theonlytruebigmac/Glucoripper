@@ -22,9 +22,20 @@ class AutoPushWorker(
                 Result.success()
             },
             onFailure = { t ->
-                Timber.w(t, "Auto-push failed")
-                Result.retry()
+                if (runAttemptCount >= MAX_RETRIES) {
+                    Timber.e(t, "Auto-push gave up after %d attempts", runAttemptCount)
+                    Result.failure()
+                } else {
+                    Timber.w(t, "Auto-push failed (attempt %d); will retry", runAttemptCount)
+                    Result.retry()
+                }
             },
         )
+    }
+
+    companion object {
+        // Caps the WorkManager backoff chain so a permanently-bad payload (e.g.
+        // HC denied permission) doesn't retry forever and burn battery.
+        const val MAX_RETRIES = 5
     }
 }

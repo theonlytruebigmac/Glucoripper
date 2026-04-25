@@ -21,8 +21,10 @@ import kotlinx.coroutines.launch
  * so the tile UI can be verified without a paired phone. Lives in `src/debug/`
  * and is never compiled into release builds.
  *
- * Trigger with:
+ * Trigger with (note `-p` so only the wear app receives it; the receiver is
+ * `exported=false` so this won't fire for unprivileged broadcasters):
  *   adb shell am broadcast -a com.syschimp.glucoripper.wear.DEV_SEED \
+ *     -p com.syschimp.glucoripper \
  *     -n com.syschimp.glucoripper/com.syschimp.glucoripper.wear.DevSeedReceiver
  */
 class DevSeedReceiver : BroadcastReceiver() {

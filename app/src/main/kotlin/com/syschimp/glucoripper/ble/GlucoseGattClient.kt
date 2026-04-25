@@ -46,11 +46,27 @@ class GlucoseGattClient(
 
     class BleException(message: String) : Exception(message)
 
+    data class PullResult(
+        val records: List<GlucoseRecord>,
+        /** Total records the meter currently holds. Used to detect uint16 sequence rollover. */
+        val totalCount: Int,
+        /** True when [previousTotalCount] was supplied and the meter now holds fewer
+         *  records than last time, implying it wrapped (or was reset). */
+        val rolledOver: Boolean,
+    )
+
     /**
      * Pull stored records. If [fromSequenceExclusive] is non-null, only records with
      * a sequence number strictly greater than it are fetched (delta sync).
+     *
+     * If [previousTotalCount] is supplied, the meter's total record count is queried
+     * first; when the new total is lower, a rollover is assumed and a full sweep is
+     * issued instead of the (now-broken) delta query.
      */
-    suspend fun pullRecords(fromSequenceExclusive: Int?): List<GlucoseRecord> {
+    suspend fun pullRecords(
+        fromSequenceExclusive: Int?,
+        previousTotalCount: Int? = null,
+    ): PullResult {
         require(
             ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
                     == PackageManager.PERMISSION_GRANTED
@@ -81,32 +97,61 @@ class GlucoseGattClient(
             }
             enableCccd(racp, indicate = true)
 
-            val request = if (fromSequenceExclusive == null) {
+            writeCharacteristic(racp, RacpClient.numberOfRecordsAll())
+            val totalCount = awaitNumberOfRecords()
+            val rolledOver = previousTotalCount != null && totalCount < previousTotalCount
+            if (rolledOver) {
+                Timber.w(
+                    "Meter total dropped from %d to %d; treating as sequence rollover and full-syncing",
+                    previousTotalCount, totalCount,
+                )
+            }
+
+            val request = if (fromSequenceExclusive == null || rolledOver) {
                 RacpClient.reportAll()
             } else {
                 RacpClient.reportFrom(fromSequenceExclusive + 1)
             }
             writeCharacteristic(racp, request)
-
-            return collectRecords()
+            val records = collectRecords()
+            return PullResult(records, totalCount, rolledOver)
         } finally {
             closeQuietly()
         }
     }
 
-    private suspend fun connect() = withTimeout(20_000) {
-        suspendCancellableCoroutine { cont ->
-            pendingConnection = cont
-            gatt = device.connectGatt(context, /* autoConnect = */ false, callback)
-            cont.invokeOnCancellation { closeQuietly() }
+    private suspend fun awaitNumberOfRecords(): Int = withTimeout(15_000) {
+        while (true) {
+            val payload = racpIndications.receive()
+            when (val r = RacpClient.parse(payload)) {
+                is RacpClient.Response.NumberOfRecords -> return@withTimeout r.count
+                is RacpClient.Response.OperationResult ->
+                    throw BleException("Number-of-records query failed: code=${r.responseCode}")
+                is RacpClient.Response.Unknown -> Unit
+            }
+        }
+        @Suppress("UNREACHABLE_CODE") -1
+    }
+
+    private suspend fun connect() = opMutex.withLock {
+        check(pendingConnection == null) { "connect() already in flight" }
+        withTimeout(20_000) {
+            suspendCancellableCoroutine { cont ->
+                pendingConnection = cont
+                gatt = device.connectGatt(context, /* autoConnect = */ false, callback)
+                cont.invokeOnCancellation { closeQuietly() }
+            }
         }
     }
 
-    private suspend fun discoverServices() = withTimeout(15_000) {
-        suspendCancellableCoroutine { cont ->
-            pendingDiscover = cont
-            val ok = gatt?.discoverServices() == true
-            if (!ok) cont.resumeWithException(BleException("discoverServices() returned false"))
+    private suspend fun discoverServices() = opMutex.withLock {
+        check(pendingDiscover == null) { "discoverServices() already in flight" }
+        withTimeout(15_000) {
+            suspendCancellableCoroutine { cont ->
+                pendingDiscover = cont
+                val ok = gatt?.discoverServices() == true
+                if (!ok) cont.resumeWithException(BleException("discoverServices() returned false"))
+            }
         }
     }
 

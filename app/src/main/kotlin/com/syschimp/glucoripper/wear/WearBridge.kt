@@ -32,6 +32,17 @@ object WearBridge {
     // dedupes identical DataItems, but gating here avoids the Play Services RPC
     // entirely when nothing user-visible has changed.
     @Volatile private var lastFingerprint: String? = null
+    @Volatile private var lastFingerprintAtMs: Long = 0L
+    // Re-push at least every 24h so a freshly-installed watch app (whose local
+    // DataItem cache is empty) still receives the latest reading even if the
+    // phone hasn't seen new HC data since the previous push.
+    private const val FINGERPRINT_TTL_MS = 24L * 60L * 60L * 1000L
+
+    /** Forget the cached fingerprint so the next [push] is unconditional. */
+    fun invalidate() {
+        lastFingerprint = null
+        lastFingerprintAtMs = 0L
+    }
 
     suspend fun push(context: Context) {
         runCatching { pushInternal(context) }
@@ -69,9 +80,11 @@ object WearBridge {
             winValues.contentHashCode(),
             winMeals.hashCode(),
         ).joinToString("|")
-        if (fingerprint == lastFingerprint) return
+        val now = System.currentTimeMillis()
+        if (fingerprint == lastFingerprint && now - lastFingerprintAtMs < FINGERPRINT_TTL_MS) return
 
         val req = PutDataMapRequest.create(WearKeys.PATH_LATEST).apply {
+            dataMap.putInt(WearKeys.KEY_SCHEMA, WearKeys.SCHEMA_VERSION)
             dataMap.putLong(WearKeys.KEY_TIME, latest.time.toEpochMilli())
             dataMap.putDouble(WearKeys.KEY_MGDL, latest.level.inMilligramsPerDeciliter)
             dataMap.putInt(WearKeys.KEY_MEAL, latest.relationToMeal)
@@ -93,6 +106,7 @@ object WearBridge {
         val request = req.asPutDataRequest().setUrgent()
         Wearable.getDataClient(context).putDataItem(request).await()
         lastFingerprint = fingerprint
+        lastFingerprintAtMs = now
     }
 
     private val GlucoseUnit.wireName: String
