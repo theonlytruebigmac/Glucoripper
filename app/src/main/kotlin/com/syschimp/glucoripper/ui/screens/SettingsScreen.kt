@@ -77,6 +77,7 @@ private val historyFormatter = DateTimeFormatter.ofPattern("MMM d · h:mm a")
 fun SettingsScreen(
     state: UiState,
     onPairMeter: suspend () -> IntentSender,
+    onPairFinished: () -> Unit,
     onSyncMeter: (PairedMeter) -> Unit,
     onForceResyncMeter: (PairedMeter) -> Unit,
     onUnpairMeter: (PairedMeter) -> Unit,
@@ -113,6 +114,7 @@ fun SettingsScreen(
                 DevicesSection(
                     state = state,
                     onPairMeter = onPairMeter,
+                    onPairFinished = onPairFinished,
                     onSync = onSyncMeter,
                     onForceResync = onForceResyncMeter,
                     onUnpair = onUnpairMeter,

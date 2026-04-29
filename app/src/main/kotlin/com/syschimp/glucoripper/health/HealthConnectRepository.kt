@@ -11,7 +11,6 @@ import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import androidx.health.connect.client.units.BloodGlucose
 import com.syschimp.glucoripper.data.StagedReading
-import timber.log.Timber
 import java.time.Instant
 import java.time.ZoneOffset
 
@@ -34,9 +33,10 @@ class HealthConnectRepository(private val context: Context) {
 
     /**
      * Push staged readings to Health Connect. Returns the number actually inserted.
-     * Per-record clamp: any reading whose timestamp is after `now` is shifted to
-     * `now - 1s`, so a single glitched-RTC reading can't drag the whole batch back
-     * (HC dedupes on clientRecordId, so a wrong timestamp would be sticky).
+     *
+     * `clientRecordVersion` is wall-clock millis so a re-push (e.g. after a parser
+     * fix that retroactively corrects timestamps on already-pushed records) wins
+     * over the prior version — HC keeps the higher-versioned write per clientRecordId.
      */
     suspend fun pushStaged(readings: List<StagedReading>): Int {
         if (readings.isEmpty()) return 0
@@ -46,17 +46,10 @@ class HealthConnectRepository(private val context: Context) {
             model = "Contour Next One",
         )
 
-        val now = Instant.now()
+        val version = System.currentTimeMillis()
         val hcRecords = readings.map { r ->
-            val effectiveTime = if (r.time.isAfter(now)) {
-                Timber.w(
-                    "Reading %s has future timestamp %s; clamping to now",
-                    r.id, r.time,
-                )
-                now.minusSeconds(1)
-            } else r.time
             BloodGlucoseRecord(
-                time = effectiveTime,
+                time = r.time,
                 zoneOffset = ZoneOffset.UTC,
                 level = BloodGlucose.milligramsPerDeciliter(r.mgPerDl),
                 specimenSource = r.specimenSource,
@@ -64,7 +57,7 @@ class HealthConnectRepository(private val context: Context) {
                 relationToMeal = r.effectiveMeal,
                 metadata = Metadata(
                     clientRecordId = r.id,
-                    clientRecordVersion = 1L,
+                    clientRecordVersion = version,
                     device = device,
                     recordingMethod = Metadata.RECORDING_METHOD_AUTOMATICALLY_RECORDED,
                 ),

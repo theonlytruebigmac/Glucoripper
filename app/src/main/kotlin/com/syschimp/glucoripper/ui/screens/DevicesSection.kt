@@ -64,6 +64,7 @@ import java.time.Instant
 fun DevicesSection(
     state: UiState,
     onPairMeter: suspend () -> IntentSender,
+    onPairFinished: () -> Unit,
     onSync: (PairedMeter) -> Unit,
     onForceResync: (PairedMeter) -> Unit,
     onUnpair: (PairedMeter) -> Unit,
@@ -79,7 +80,7 @@ fun DevicesSection(
             )
         }
         if (state.meters.isEmpty()) {
-            EmptyMetersCard(onPairMeter)
+            EmptyMetersCard(onPairMeter, onPairFinished)
         } else {
             state.meters.forEach { meter ->
                 MeterCard(
@@ -91,7 +92,7 @@ fun DevicesSection(
                     onForceResync = onForceResync,
                 )
             }
-            PairAnotherButton(onPairMeter)
+            PairAnotherButton(onPairMeter, onPairFinished)
         }
         HealthConnectRow(
             state = state.healthConnectState,
@@ -369,11 +370,14 @@ private fun HealthConnectRow(
 }
 
 @Composable
-private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
+private fun EmptyMetersCard(
+    onPairMeter: suspend () -> IntentSender,
+    onPairFinished: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { }
+    ) { onPairFinished() }
 
     Column(
         modifier = Modifier
@@ -448,11 +452,14 @@ private fun EmptyMetersCard(onPairMeter: suspend () -> IntentSender) {
 }
 
 @Composable
-private fun PairAnotherButton(onPairMeter: suspend () -> IntentSender) {
+private fun PairAnotherButton(
+    onPairMeter: suspend () -> IntentSender,
+    onPairFinished: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     val launcher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
-    ) { }
+    ) { onPairFinished() }
     Row(
         modifier = Modifier
             .fillMaxWidth()

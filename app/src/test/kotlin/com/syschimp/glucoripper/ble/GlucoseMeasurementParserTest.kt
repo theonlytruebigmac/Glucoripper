@@ -102,16 +102,34 @@ class GlucoseMeasurementParserTest {
         assertThat(r.mgPerDl).isWithin(1e-3).of(90.078)
     }
 
-    @Test fun parses_time_offset_and_adjusts_instant_to_UTC() {
-        // Flags 0x01: time offset present (no concentration).
-        // Meter reports 10:30:00 with offset -300 min (UTC-5). UTC = 15:30:00.
+    @Test fun applies_time_offset_to_base_per_spec() {
+        // GLS 1.0.1 §3.1.2.4: actual time of measurement = Base Time + Time Offset.
+        // Base = 2024-03-15 17:00:00, Offset = -300 min → corrected local 12:00:00.
+        // Anchored to America/New_York (EDT in mid-March, UTC-4) → 16:00:00 UTC.
         val payload = byteArrayOf(
             0x01, 0x01, 0x00,
-            0xE8.toByte(), 0x07, 0x03, 0x0F, 0x0A, 0x1E, 0x00,
+            0xE8.toByte(), 0x07, 0x03, 0x0F, 0x11, 0x00, 0x00,
             0xD4.toByte(), 0xFE.toByte(),  // offset = -300 (LE two's complement)
         )
-        val r = GlucoseMeasurementParser.parse(payload)
-        assertThat(r.time).isEqualTo(Instant.parse("2024-03-15T15:30:00Z"))
+        val r = GlucoseMeasurementParser.parse(payload, ZoneId.of("America/New_York"))
+        assertThat(r.time).isEqualTo(Instant.parse("2024-03-15T16:00:00Z"))
+    }
+
+    @Test fun non_standard_time_offset_handled_per_spec() {
+        // Real-world Contour Next One case: user nudged clock by 5 min, so the
+        // meter reports a non-standard offset of -235 min (-3h55m). The prior
+        // parser doubled the error; with spec-correct math this lands cleanly.
+        // Base = 2026-04-29 17:07:24, Offset = -235 → corrected local 13:12:24.
+        // In America/New_York (EDT, UTC-4) → 17:12:24 UTC.
+        val payload = byteArrayOf(
+            0x03, 0xB8.toByte(), 0x00,
+            0xEA.toByte(), 0x07, 0x04, 0x1D, 0x11, 0x07, 0x18,
+            0x15, 0xFF.toByte(),                       // offset = -235
+            0x01, 0xD0.toByte(),                       // SFLOAT 100 mg/dL
+            0x11,
+        )
+        val r = GlucoseMeasurementParser.parse(payload, ZoneId.of("America/New_York"))
+        assertThat(r.time).isEqualTo(Instant.parse("2026-04-29T17:12:24Z"))
     }
 
     @Test fun parses_sensor_status_and_exposes_low_battery_flag() {

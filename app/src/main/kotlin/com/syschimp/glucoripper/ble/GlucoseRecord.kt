@@ -6,7 +6,6 @@ import java.nio.ByteOrder
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneId
-import java.time.ZoneOffset
 
 /**
  * One parsed entry from the Glucose Measurement characteristic (0x2A18).
@@ -78,10 +77,12 @@ object GlucoseMeasurementParser {
     private const val FLAG_CONTEXT_FOLLOWS = 0x10
 
     /**
-     * @param defaultZone Zone used to interpret the meter's wall-clock time when
-     *   the measurement does not include a time-offset field. Meters that omit
-     *   FLAG_TIME_OFFSET report local time; assuming UTC there silently shifts
-     *   the reading by the user's UTC offset.
+     * @param defaultZone Zone used to convert the corrected wall-clock time to a
+     *   UTC instant. The Glucose Service spec defines Base Time as local wall-clock
+     *   in the device's currently-set zone, and Time Offset as the cumulative
+     *   minutes the device's clock has been adjusted (DST, manual edits) since
+     *   the reading was recorded — so `Base + Offset` recovers the actual wall-clock
+     *   time of the measurement, which we then anchor to [defaultZone] for UTC.
      * @throws IllegalArgumentException if the payload is malformed.
      */
     fun parse(payload: ByteArray, defaultZone: ZoneId = ZoneId.systemDefault()): GlucoseRecord {
@@ -111,12 +112,14 @@ object GlucoseMeasurementParser {
             minute.coerceIn(0, 59),
             second.coerceIn(0, 59),
         )
-        val offset = if (explicitOffsetMinutes != null) {
-            ZoneOffset.ofTotalSeconds(explicitOffsetMinutes * 60)
-        } else {
-            defaultZone.rules.getOffset(base)
-        }
-        val instant = base.toInstant(offset)
+        // GLS 1.0.1 §3.1.2.4: actual measurement time = Base Time + Time Offset.
+        // Treating Offset as a UTC zone offset (the prior bug) only happened to
+        // give correct results when Offset matched the user's actual zone; any
+        // non-zone value (e.g. a 5-min manual nudge → −235) silently doubled.
+        val correctedLocal = if (explicitOffsetMinutes != null) {
+            base.plusMinutes(explicitOffsetMinutes.toLong())
+        } else base
+        val instant = correctedLocal.atZone(defaultZone).toInstant()
 
         var mgPerDl: Double? = null
         var sampleType: GlucoseRecord.SampleType? = null

@@ -154,6 +154,7 @@ fun MainScreen(
                 SettingsScreen(
                     state = state,
                     onPairMeter = onPairMeter,
+                    onPairFinished = { viewModel.refresh(force = true) },
                     onSyncMeter = viewModel::syncNow,
                     onForceResyncMeter = viewModel::forceFullResync,
                     onUnpairMeter = viewModel::unpair,

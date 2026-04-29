@@ -168,18 +168,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!force && now - lastRefreshMs < refreshDebounceMs) return
         lastRefreshMs = now
         viewModelScope.launch {
-            val meters = pairing.associations()
+            // CompanionDeviceManager doesn't dedupe associations by MAC — every
+            // call to associate() creates a new id even for the same physical
+            // meter. If a pairing succeeds twice (e.g. user re-taps when the
+            // first attempt's UI didn't appear to do anything), the meter shows
+            // up twice. Collapse here, keeping the newest id, and disassociate
+            // the older duplicates so the OS-level state matches what the UI shows.
+            val deduped = pairing.associations()
                 .filter { !it.address.isNullOrBlank() }
-                .map {
-                    PairedMeter(
-                        associationId = it.id,
-                        address = it.address!!,
-                        displayName = it.displayName,
-                        lastSyncMillis = runCatching {
-                            syncState.lastSyncTimeFlow(it.address!!).first()
-                        }.getOrNull(),
-                    )
+                .groupBy { it.address!! }
+                .map { (_, group) ->
+                    val sorted = group.sortedByDescending { it.id }
+                    sorted.drop(1).forEach { pairing.disassociate(it.id) }
+                    sorted.first()
                 }
+            val meters = deduped.map {
+                PairedMeter(
+                    associationId = it.id,
+                    address = it.address!!,
+                    displayName = it.displayName,
+                    lastSyncMillis = runCatching {
+                        syncState.lastSyncTimeFlow(it.address!!).first()
+                    }.getOrNull(),
+                )
+            }
 
             val hcState = when {
                 healthRepo.availability() != HealthConnectClient.SDK_AVAILABLE ->
