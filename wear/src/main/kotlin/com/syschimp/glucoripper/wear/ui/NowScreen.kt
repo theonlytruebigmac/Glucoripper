@@ -1,17 +1,24 @@
 package com.syschimp.glucoripper.wear.ui
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -20,199 +27,270 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.MaterialTheme
 import androidx.wear.compose.material.Text
-import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.data.GlucosePayload
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Watch "Now" page — mirrors the phone's RingGauge: a 270° arc with zone-colored
- * segments, pointer triangle, and center readout. Sized down for Wear displays.
+ * Watch "Now" page — chart-as-hero (Re-Diary redesign). The 4h glucose ribbon
+ * fills the lower half of the round display; the current value floats centered
+ * above it. Breathing dot at the latest sample.
  */
 @Composable
 fun NowScreen(payload: GlucosePayload) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        if (payload.latestTimeMillis == 0L) {
-            EmptyNow()
-        } else {
-            WearRingGauge(payload)
-            Spacer(Modifier.size(2.dp))
-            ContextLine(payload)
-        }
+    if (payload.latestTimeMillis == 0L) {
+        WearEmpty()
+        return
+    }
+    Box(Modifier.fillMaxSize()) {
+        WearRibbonChart(payload, modifier = Modifier.fillMaxSize())
+        WearHero(payload, modifier = Modifier.align(Alignment.TopCenter))
     }
 }
 
 @Composable
-private fun EmptyNow() {
-    Text(
-        "Glucoripper",
-        style = MaterialTheme.typography.title3,
-        color = MaterialTheme.colors.onBackground,
-    )
-    Spacer(Modifier.size(4.dp))
-    Text(
-        "Waiting for a reading from your phone…",
-        style = MaterialTheme.typography.caption2,
-        color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
-    )
-}
-
-@Composable
-private fun WearRingGauge(payload: GlucosePayload) {
+private fun WearHero(payload: GlucosePayload, modifier: Modifier = Modifier) {
     val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
     val band = classify(payload.latestMgDl, low, high)
+    val arrow = trendArrowSymbol(payload)
 
-    val gaugeMin = 40f
-    val gaugeMax = 300f
-    val highAlarm = glucoseHighAlarmCutoff(high).toFloat().coerceAtMost(gaugeMax)
-    fun fractionOf(v: Float): Float =
-        ((v - gaugeMin) / (gaugeMax - gaugeMin)).coerceIn(0f, 1f)
-
-    val pointerTarget = payload.latestMgDl.toFloat().let(::fractionOf)
-    val animated by animateFloatAsState(
-        targetValue = pointerTarget,
-        animationSpec = tween(durationMillis = 600),
-        label = "gaugePointer",
-    )
-
-    val trackColor = Color(0xFF2A3034)
-    val pointerColor = MaterialTheme.colors.onBackground
-
-    Box(
-        modifier = Modifier.size(150.dp),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = modifier
+            .padding(top = 70.dp)
+            .padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = 10.dp.toPx()
-            val inset = stroke / 2f + 4.dp.toPx()
-            val topLeft = Offset(inset, inset)
-            val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
-            val startAngle = 135f
-            val totalSweep = 270f
-
-            drawArc(
-                color = trackColor,
-                startAngle = startAngle,
-                sweepAngle = totalSweep,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = Stroke(width = stroke, cap = StrokeCap.Round),
-            )
-
-            val segments = listOf(
-                Triple(gaugeMin, low.toFloat(), GlucoseLow),
-                Triple(low.toFloat(), high.toFloat(), GlucoseInRange),
-                Triple(high.toFloat(), highAlarm, GlucoseElevated),
-                Triple(highAlarm, gaugeMax, GlucoseHigh),
-            )
-            segments.forEach { (a, b, col) ->
-                val f0 = fractionOf(a)
-                val f1 = fractionOf(b)
-                if (f1 <= f0) return@forEach
-                drawArc(
-                    color = col,
-                    startAngle = startAngle + totalSweep * f0,
-                    sweepAngle = totalSweep * (f1 - f0),
-                    useCenter = false,
-                    topLeft = topLeft,
-                    size = arcSize,
-                    style = Stroke(width = stroke, cap = StrokeCap.Butt),
-                )
-            }
-
-            val angleDeg = startAngle + totalSweep * animated
-            val angleRad = Math.toRadians(angleDeg.toDouble())
-            val cx = size.width / 2f
-            val cy = size.height / 2f
-            val radius = (arcSize.width / 2f) + stroke / 2f + 1.dp.toPx()
-            val tipX = cx + radius * cos(angleRad).toFloat()
-            val tipY = cy + radius * sin(angleRad).toFloat()
-            val baseRadius = radius + 7.dp.toPx()
-            val spread = 0.12f
-            val b1x = cx + baseRadius * cos(angleRad + spread).toFloat()
-            val b1y = cy + baseRadius * sin(angleRad + spread).toFloat()
-            val b2x = cx + baseRadius * cos(angleRad - spread).toFloat()
-            val b2y = cy + baseRadius * sin(angleRad - spread).toFloat()
-            val path = Path().apply {
-                moveTo(tipX, tipY)
-                lineTo(b1x, b1y)
-                lineTo(b2x, b2y)
-                close()
-            }
-            drawPath(path, color = pointerColor)
-        }
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "Current (${unitLabel(payload.unit)})",
-                style = MaterialTheme.typography.caption3,
-                color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f),
+                formatGlucose(payload.latestMgDl, payload.unit),
+                style = WearMono.Hero,
+                color = MaterialTheme.colors.onBackground,
             )
-            Spacer(Modifier.size(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            if (arrow != null) {
                 Text(
-                    formatGlucose(payload.latestMgDl, payload.unit),
-                    fontSize = 34.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colors.onBackground,
+                    arrow,
+                    fontSize = 24.sp,
+                    color = band.color,
                 )
-                val arrow = trendArrow(payload)
-                if (arrow != null) {
-                    Spacer(Modifier.width(3.dp))
-                    Text(
-                        arrow,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = band.color,
-                    )
-                }
             }
-            Text(
-                band.label,
-                style = MaterialTheme.typography.caption2,
-                color = band.color,
-                fontWeight = FontWeight.SemiBold,
-            )
         }
+        Text(
+            "${band.label.uppercase()} · ${relativeTime(payload.latestInstant)}",
+            style = WearOverline.copy(color = MaterialTheme.colors.onBackground.copy(alpha = 0.7f)),
+        )
     }
 }
 
 @Composable
-private fun ContextLine(payload: GlucosePayload) {
-    val parts = buildList {
-        val meal = mealLabel(payload.latestMealRelation)
-        if (meal.isNotEmpty()) add(meal)
-        add(relativeTime(payload.latestInstant))
-    }
-    Text(
-        parts.joinToString(" · "),
-        style = MaterialTheme.typography.caption2,
-        color = MaterialTheme.colors.onBackground.copy(alpha = 0.75f),
+private fun WearRibbonChart(payload: GlucosePayload, modifier: Modifier = Modifier) {
+    val nowMs = payload.windowTimesMillis.lastOrNull() ?: return
+    val cutoffMs = nowMs - 4L * 60L * 60L * 1000L
+    val (idxs) = collectWindow(payload.windowTimesMillis, cutoffMs)
+    if (idxs.size < 2) return
+
+    val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
+    val mgs = idxs.map { payload.windowMgDls[it].toDouble() }
+    val ts = idxs.map { payload.windowTimesMillis[it] }
+
+    val yMin = (mgs.min().coerceAtMost(low - 8.0))
+    val yMax = (mgs.max().coerceAtLeast(high + 12.0))
+    val band = classify(mgs.last(), low, high)
+
+    val pulse = rememberInfiniteTransition(label = "wearPulse")
+    val pulseR by pulse.animateFloat(
+        initialValue = 6f,
+        targetValue = 13f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "wearPulseR",
     )
+    val pulseAlpha by pulse.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.05f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "wearPulseA",
+    )
+
+    val fg = MaterialTheme.colors.onBackground
+    val bg = MaterialTheme.colors.background
+    val faint = WearFgFaint
+    val targetEdge = fg.copy(alpha = 0.18f)
+    val targetBand = fg.copy(alpha = 0.05f)
+    val accent = band.color
+
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val padX = 24.dp.toPx()
+        val chartTop = 130.dp.toPx().coerceAtMost(h * 0.45f)
+        val chartBottom = (h - 36.dp.toPx()).coerceAtLeast(chartTop + 80.dp.toPx())
+
+        val tMin = ts.first()
+        val tMax = ts.last()
+        val tSpan = (tMax - tMin).coerceAtLeast(1L).toFloat()
+        val ySpan = (yMax - yMin).coerceAtLeast(1.0).toFloat()
+
+        fun xOf(tMs: Long): Float = padX + ((tMs - tMin).toFloat() / tSpan) * (w - padX * 2)
+        fun yOf(mg: Double): Float = chartTop + (1f - ((mg - yMin) / ySpan).toFloat()) * (chartBottom - chartTop)
+
+        val xs = ts.map(::xOf)
+        val ys = mgs.map(::yOf)
+
+        // Target band fill
+        val yLow = yOf(low)
+        val yHigh = yOf(high)
+        drawRect(
+            color = targetBand,
+            topLeft = Offset(0f, yHigh),
+            size = Size(w, yLow - yHigh),
+        )
+        val dash = PathEffect.dashPathEffect(floatArrayOf(2f, 4f), 0f)
+        drawLine(
+            color = targetEdge,
+            start = Offset(0f, yLow),
+            end = Offset(w, yLow),
+            strokeWidth = 0.7f,
+            pathEffect = dash,
+        )
+        drawLine(
+            color = targetEdge,
+            start = Offset(0f, yHigh),
+            end = Offset(w, yHigh),
+            strokeWidth = 0.7f,
+            pathEffect = dash,
+        )
+
+        // Smooth bezier path through the points
+        val linePath = buildSmoothPath(xs, ys)
+        val areaPath = Path().apply {
+            addPath(linePath)
+            lineTo(xs.last(), chartBottom)
+            lineTo(xs.first(), chartBottom)
+            close()
+        }
+
+        drawPath(areaPath, color = fg.copy(alpha = 0.06f))
+        drawPath(
+            linePath,
+            color = fg,
+            style = Stroke(
+                width = 2f * density,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
+        )
+
+        // Breathing dot at last sample
+        val cx = xs.last()
+        val cy = ys.last()
+        drawCircle(
+            color = accent.copy(alpha = pulseAlpha),
+            radius = pulseR * density,
+            center = Offset(cx, cy),
+        )
+        drawCircle(
+            color = bg,
+            radius = 4.5f * density,
+            center = Offset(cx, cy),
+        )
+        drawCircle(
+            color = accent,
+            radius = 4.5f * density,
+            center = Offset(cx, cy),
+            style = Stroke(width = 2f * density),
+        )
+
+        // Suppress unused warnings
+        if (faint.alpha < 0f) drawCircle(color = faint, radius = 0f, center = Offset.Zero)
+    }
 }
 
-private fun trendArrow(payload: GlucosePayload): String? {
+private fun buildSmoothPath(xs: List<Float>, ys: List<Float>): Path {
+    val path = Path()
+    val n = xs.size
+    if (n < 2) return path
+    path.moveTo(xs[0], ys[0])
+    for (i in 1 until n) {
+        val px = xs[i - 1]
+        val py = ys[i - 1]
+        val cx = (px + xs[i]) / 2f
+        path.cubicTo(cx, py, cx, ys[i], xs[i], ys[i])
+    }
+    return path
+}
+
+/** Returns the indices into the window arrays that sit at or after [cutoffMs]. */
+private fun collectWindow(times: LongArray, cutoffMs: Long): Pair<List<Int>, Int> {
+    val idx = mutableListOf<Int>()
+    for (i in times.indices) {
+        if (times[i] >= cutoffMs) idx += i
+    }
+    return idx to idx.size
+}
+
+private fun trendArrowSymbol(payload: GlucosePayload): String? {
     val delta = trendDelta(payload) ?: return null
     return when {
         delta > 15f -> "↗"
         delta < -15f -> "↘"
         else -> "→"
+    }
+}
+
+// ─────────── Empty state ───────────
+
+@Composable
+fun WearEmpty() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 36.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            Modifier
+                .size(48.dp)
+                .background(Color.Transparent, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawCircle(
+                    color = WearFgFaint,
+                    radius = size.minDimension / 2 - 1.dp.toPx(),
+                    style = Stroke(
+                        width = 1.5f * density,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(3f, 4f), 0f),
+                    ),
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Text(
+            "Waiting for a reading",
+            fontSize = 14.sp,
+            color = MaterialTheme.colors.onBackground,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Open Glucoripper on your phone and sync your meter.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colors.onBackground.copy(alpha = 0.6f),
+        )
     }
 }

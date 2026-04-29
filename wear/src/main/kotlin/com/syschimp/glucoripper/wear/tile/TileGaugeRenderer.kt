@@ -2,7 +2,7 @@ package com.syschimp.glucoripper.wear.tile
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
@@ -12,34 +12,29 @@ import com.syschimp.glucoripper.shared.glucoseHighAlarmCutoff
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseUnit
 import java.nio.ByteBuffer
-import kotlin.math.cos
-import kotlin.math.sin
 
 /**
- * Draws the same ring-gauge the main `:wear` app shows in [NowScreen], but into
- * a [Bitmap] so it can be surfaced as an inline image in the protolayout tile.
- * Tiles can't host Compose, so the drawing is ported to [android.graphics.Canvas].
+ * Re-Diary Tile renderer. Chart-forward layout — sparkline at the top, big mono
+ * value in the middle, status pill at the bottom. Drawn into a [Bitmap] so the
+ * protolayout tile can surface it as an inline image.
  *
  * Renders raw ARGB_8888 pixel bytes — protolayout's InlineImageResource does not
- * decode PNG/JPEG, it expects raw pixels in one of its IMAGE_FORMAT_* variants.
- * RGB_565 was used previously but lost the alpha channel, leaving a black square
- * around the gauge whenever the watch face had a non-black tile background or
- * a lighter ambient theme.
+ * decode PNG/JPEG.
  */
 object TileGaugeRenderer {
 
-    private const val GAUGE_MIN = 40f
-    private const val GAUGE_MAX = 300f
-    private const val START_ANGLE = 135f
-    private const val TOTAL_SWEEP = 270f
+    // Re-Diary tokens (dark only — watch is OLED).
+    private const val BG = 0xFF0B0D0F.toInt()
+    private const val FG = 0xFFECEEF0.toInt()
+    private const val FG_MUTED = 0xFFA0A6AB.toInt()
+    private const val FG_SUBTLE = 0xFF6B7177.toInt()
+    private const val FG_FAINT = 0xFF3F454A.toInt()
+    private const val ELEV_2 = 0xFF1B1F22.toInt()
 
-    private const val TRACK_COLOR = 0xFF2A3034.toInt()
     private const val LOW_COLOR = 0xFFE5484D.toInt()
     private const val IN_RANGE_COLOR = 0xFF30A46C.toInt()
     private const val ELEVATED_COLOR = 0xFFF5A524.toInt()
     private const val HIGH_COLOR = 0xFFE5484D.toInt()
-    private const val TEXT_COLOR = 0xFFE1E3E6.toInt()
-    private const val TEXT_DIM = 0xB3E1E3E6.toInt()
 
     fun renderArgb8888(payload: GlucosePayload, sizePx: Int): ByteArray {
         val bmp = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
@@ -53,133 +48,183 @@ object TileGaugeRenderer {
 
     private fun draw(canvas: Canvas, payload: GlucosePayload, size: Float) {
         val (low, high) = payload.targetRangeFor(payload.latestMealRelation)
-        val highAlarm = glucoseHighAlarmCutoff(high).toFloat().coerceAtMost(GAUGE_MAX)
-        val stroke = size * 0.067f
-        val inset = stroke / 2f + size * 0.027f
-        val rect = RectF(inset, inset, size - inset, size - inset)
+        val highAlarm = glucoseHighAlarmCutoff(high)
+        val band = bandColor(payload.latestMgDl, low, high, highAlarm)
+        val bandLabel = bandLabel(payload.latestMgDl, low, high, highAlarm)
 
-        val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = stroke
-            strokeCap = Paint.Cap.ROUND
-            color = TRACK_COLOR
+        // Overline: GLUCOSE · 4M AGO
+        val overlineY = size * 0.18f
+        val overlinePaint = textPaint(size * 0.038f, FG_MUTED, bold = true).apply {
+            letterSpacing = 0.16f
         }
-        canvas.drawArc(rect, START_ANGLE, TOTAL_SWEEP, false, trackPaint)
-
-        val segPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = stroke
-            strokeCap = Paint.Cap.BUTT
-        }
-        val segments = listOf(
-            Triple(GAUGE_MIN, low.toFloat(), LOW_COLOR),
-            Triple(low.toFloat(), high.toFloat(), IN_RANGE_COLOR),
-            Triple(high.toFloat(), highAlarm, ELEVATED_COLOR),
-            Triple(highAlarm, GAUGE_MAX, HIGH_COLOR),
+        canvas.drawText(
+            "GLUCOSE",
+            size / 2f,
+            overlineY,
+            overlinePaint,
         )
-        segments.forEach { (a, b, col) ->
-            val f0 = fractionOf(a)
-            val f1 = fractionOf(b)
-            if (f1 <= f0) return@forEach
-            segPaint.color = col
-            canvas.drawArc(
-                rect,
-                START_ANGLE + TOTAL_SWEEP * f0,
-                TOTAL_SWEEP * (f1 - f0),
-                false,
-                segPaint,
-            )
-        }
 
-        val pointerFraction = fractionOf(payload.latestMgDl.toFloat())
-        drawPointer(canvas, size, rect, stroke, pointerFraction)
-        drawCenter(canvas, payload, low, high, highAlarm.toDouble(), size)
+        // Sparkline area
+        val chartTop = size * 0.24f
+        val chartBottom = size * 0.50f
+        val chartPadX = size * 0.12f
+        drawSparkline(canvas, payload, low, high, band,
+            left = chartPadX, right = size - chartPadX,
+            top = chartTop, bottom = chartBottom,
+            density = size,
+        )
+
+        // Big mono numeric + unit
+        val valueText = formatValue(payload.latestMgDl, payload.unit)
+        val valuePaint = monoPaint(size * 0.20f, FG, bold = true).apply {
+            letterSpacing = -0.02f
+        }
+        val unitPaint = textPaint(size * 0.045f, FG_SUBTLE, bold = false)
+        val valueY = size * 0.71f
+        val valueWidth = valuePaint.measureText(valueText)
+        val unitText = unitLabel(payload.unit)
+        val unitWidth = unitPaint.measureText(unitText)
+        val totalW = valueWidth + unitWidth + size * 0.025f
+        val valueX = (size - totalW) / 2f + valueWidth / 2f
+        valuePaint.textAlign = Paint.Align.CENTER
+        canvas.drawText(valueText, valueX, valueY, valuePaint)
+        unitPaint.textAlign = Paint.Align.LEFT
+        canvas.drawText(
+            unitText,
+            valueX + valueWidth / 2f + size * 0.018f,
+            valueY,
+            unitPaint,
+        )
+
+        // Status pill
+        val pillH = size * 0.067f
+        val pillPaddingX = size * 0.044f
+        val pillPaint = textPaint(size * 0.038f, band, bold = true).apply {
+            letterSpacing = 0.12f
+        }
+        val pillLabel = bandLabel.uppercase()
+        val pillW = pillPaint.measureText(pillLabel) + pillPaddingX * 2
+        val pillX = (size - pillW) / 2f
+        val pillY = size * 0.82f
+        val pillBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = mixWith(band, BG, 0.16f)
+        }
+        canvas.drawRoundRect(
+            RectF(pillX, pillY, pillX + pillW, pillY + pillH),
+            pillH / 2f, pillH / 2f, pillBg,
+        )
+        canvas.drawText(
+            pillLabel,
+            size / 2f,
+            pillY + pillH / 2f - (pillPaint.fontMetrics.ascent + pillPaint.fontMetrics.descent) / 2f,
+            pillPaint,
+        )
     }
 
-    private fun drawPointer(
-        canvas: Canvas,
-        size: Float,
-        rect: RectF,
-        stroke: Float,
-        fraction: Float,
-    ) {
-        val angleDeg = START_ANGLE + TOTAL_SWEEP * fraction
-        val angleRad = Math.toRadians(angleDeg.toDouble())
-        val cx = size / 2f
-        val cy = size / 2f
-        val radius = (rect.width() / 2f) + stroke / 2f + size * 0.007f
-        val tipX = cx + radius * cos(angleRad).toFloat()
-        val tipY = cy + radius * sin(angleRad).toFloat()
-        val baseRadius = radius + size * 0.047f
-        val spread = 0.12f
-        val b1x = cx + baseRadius * cos(angleRad + spread).toFloat()
-        val b1y = cy + baseRadius * sin(angleRad + spread).toFloat()
-        val b2x = cx + baseRadius * cos(angleRad - spread).toFloat()
-        val b2y = cy + baseRadius * sin(angleRad - spread).toFloat()
-
-        val path = Path().apply {
-            moveTo(tipX, tipY)
-            lineTo(b1x, b1y)
-            lineTo(b2x, b2y)
-            close()
-        }
-        val pointerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = TEXT_COLOR
-        }
-        canvas.drawPath(path, pointerPaint)
-    }
-
-    private fun drawCenter(
+    private fun drawSparkline(
         canvas: Canvas,
         payload: GlucosePayload,
         low: Double,
         high: Double,
-        highAlarm: Double,
-        size: Float,
+        band: Int,
+        left: Float,
+        right: Float,
+        top: Float,
+        bottom: Float,
+        density: Float,
     ) {
-        val cx = size / 2f
-        val unitPaint = textPaint(size * 0.063f, TEXT_DIM, bold = false)
-        val valuePaint = textPaint(size * 0.22f, TEXT_COLOR, bold = true)
-        val bandPaint = textPaint(size * 0.073f, bandColor(payload.latestMgDl, low, high, highAlarm), bold = true)
+        val n = minOf(payload.windowTimesMillis.size, payload.windowMgDls.size)
+        if (n < 2) return
+        // Take last 4h
+        val lastT = payload.windowTimesMillis[n - 1]
+        val cutoff = lastT - 4L * 60L * 60L * 1000L
+        val idxs = (0 until n).filter { payload.windowTimesMillis[it] >= cutoff }
+        if (idxs.size < 2) return
+        val ts = idxs.map { payload.windowTimesMillis[it].toFloat() }
+        val mgs = idxs.map { payload.windowMgDls[it] }
+        val mn = (mgs.min().toDouble().coerceAtMost(low - 8.0)).toFloat()
+        val mx = (mgs.max().toDouble().coerceAtLeast(high + 8.0)).toFloat()
+        val ySpan = (mx - mn).coerceAtLeast(1f)
+        val xSpan = (ts.last() - ts.first()).coerceAtLeast(1f)
+        fun xOf(t: Float): Float = left + ((t - ts.first()) / xSpan) * (right - left)
+        fun yOf(v: Float): Float = top + (1f - (v - mn) / ySpan) * (bottom - top)
+        val xs = ts.map(::xOf)
+        val ys = mgs.map(::yOf)
 
-        val unitText = "Current (${unitLabel(payload.unit)})"
-        val valueText = formatValue(payload.latestMgDl, payload.unit)
-        val bandText = bandLabel(payload.latestMgDl, low, high, highAlarm)
+        // Target band tint
+        val bandPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = (FG and 0x00FFFFFF) or 0x0F000000
+        }
+        canvas.drawRect(
+            left, yOf(high.toFloat()),
+            right, yOf(low.toFloat()),
+            bandPaint,
+        )
+        // Dashed bounds
+        val dashPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = FG_FAINT
+            style = Paint.Style.STROKE
+            strokeWidth = 0.6f * density / 200f
+            pathEffect = DashPathEffect(floatArrayOf(2f, 3f), 0f)
+        }
+        canvas.drawLine(left, yOf(low.toFloat()), right, yOf(low.toFloat()), dashPaint)
+        canvas.drawLine(left, yOf(high.toFloat()), right, yOf(high.toFloat()), dashPaint)
 
-        val unitFm = unitPaint.fontMetrics
-        val valueFm = valuePaint.fontMetrics
-        val bandFm = bandPaint.fontMetrics
-        val unitH = unitFm.descent - unitFm.ascent
-        val valueH = valueFm.descent - valueFm.ascent
-        val bandH = bandFm.descent - bandFm.ascent
-        val gap = size * 0.008f
-        val totalH = unitH + valueH + bandH + gap * 2f
+        // Smooth bezier
+        val path = Path().apply {
+            moveTo(xs[0], ys[0])
+            for (i in 1 until xs.size) {
+                val cx = (xs[i - 1] + xs[i]) / 2f
+                cubicTo(cx, ys[i - 1], cx, ys[i], xs[i], ys[i])
+            }
+        }
+        val curvePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = FG
+            style = Paint.Style.STROKE
+            strokeWidth = density * 0.005f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        canvas.drawPath(path, curvePaint)
 
-        var top = (size - totalH) / 2f
-        canvas.drawText(unitText, cx, top - unitFm.ascent, unitPaint)
-        top += unitH + gap
-        canvas.drawText(valueText, cx, top - valueFm.ascent, valuePaint)
-        top += valueH + gap
-        canvas.drawText(bandText, cx, top - bandFm.ascent, bandPaint)
+        // Last sample dot
+        val dotR = density * 0.011f
+        val cx = xs.last()
+        val cy = ys.last()
+        val dotBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BG }
+        val dotStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = band
+            style = Paint.Style.STROKE
+            strokeWidth = density * 0.005f
+        }
+        canvas.drawCircle(cx, cy, dotR, dotBg)
+        canvas.drawCircle(cx, cy, dotR, dotStroke)
     }
 
     private fun textPaint(sizePx: Float, color: Int, bold: Boolean): Paint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = color
-            this.textSize = sizePx
-            this.textAlign = Paint.Align.CENTER
-            this.typeface = Typeface.create(
+            textSize = sizePx
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(
                 Typeface.DEFAULT,
                 if (bold) Typeface.BOLD else Typeface.NORMAL,
             )
         }
 
-    private fun fractionOf(v: Float): Float =
-        ((v - GAUGE_MIN) / (GAUGE_MAX - GAUGE_MIN)).coerceIn(0f, 1f)
+    private fun monoPaint(sizePx: Float, color: Int, bold: Boolean): Paint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            textSize = sizePx
+            textAlign = Paint.Align.CENTER
+            typeface = Typeface.create(
+                Typeface.MONOSPACE,
+                if (bold) Typeface.BOLD else Typeface.NORMAL,
+            )
+        }
 
     private fun bandColor(mgDl: Double, low: Double, high: Double, highAlarm: Double): Int = when {
-        mgDl <= 0 -> Color.GRAY
+        mgDl <= 0 -> FG_FAINT
         mgDl < low -> LOW_COLOR
         mgDl <= high -> IN_RANGE_COLOR
         mgDl < highAlarm -> ELEVATED_COLOR
@@ -202,5 +247,19 @@ object TileGaugeRenderer {
     private fun unitLabel(unit: GlucoseUnit): String = when (unit) {
         GlucoseUnit.MG_PER_DL -> "mg/dL"
         GlucoseUnit.MMOL_PER_L -> "mmol/L"
+    }
+
+    /** Mix [a] and [b] in sRGB at fraction [f] (0..1 of a). */
+    private fun mixWith(a: Int, b: Int, f: Float): Int {
+        val ar = (a shr 16) and 0xFF
+        val ag = (a shr 8) and 0xFF
+        val ab = a and 0xFF
+        val br = (b shr 16) and 0xFF
+        val bg = (b shr 8) and 0xFF
+        val bb = b and 0xFF
+        val r = (ar * f + br * (1 - f)).toInt().coerceIn(0, 255)
+        val g = (ag * f + bg * (1 - f)).toInt().coerceIn(0, 255)
+        val bl = (ab * f + bb * (1 - f)).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (r shl 16) or (g shl 8) or bl
     }
 }
