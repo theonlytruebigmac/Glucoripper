@@ -11,6 +11,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import com.syschimp.glucoripper.wear.data.GlucosePayload
 import com.syschimp.glucoripper.wear.data.GlucoseStore
+import com.syschimp.glucoripper.wear.ui.GlucoWearTheme
 import com.syschimp.glucoripper.wear.ui.WearHomePager
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +25,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val state by viewModel.state.collectAsStateWithLifecycle()
-            WearHomePager(state)
+            GlucoWearTheme {
+                WearHomePager(state)
+            }
         }
     }
 }

@@ -1,7 +1,6 @@
 package com.syschimp.glucoripper.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,14 +9,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.WaterDrop
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,17 +25,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.records.BloodGlucoseRecord
 import com.syschimp.glucoripper.data.Feeling
-import com.syschimp.glucoripper.data.GlucoseUnit
+import com.syschimp.glucoripper.data.targetRangeFor
 import com.syschimp.glucoripper.ui.ReadingDetailSheet
 import com.syschimp.glucoripper.ui.UiState
-import com.syschimp.glucoripper.ui.components.TimelineCard
+import com.syschimp.glucoripper.ui.components.RdEmptyState
+import com.syschimp.glucoripper.ui.components.RdOverlineText
+import com.syschimp.glucoripper.ui.components.RdReadingRow
+import com.syschimp.glucoripper.ui.components.RdTIRBar
+import com.syschimp.glucoripper.ui.components.bandColor
+import com.syschimp.glucoripper.ui.components.formatTimeOnly
+import com.syschimp.glucoripper.ui.components.relationShort
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
+import com.syschimp.glucoripper.ui.theme.GlucoseInRange
+import com.syschimp.glucoripper.ui.theme.RdMono
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
@@ -47,7 +51,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToInt
 
-private val dayHeaderFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM d")
+private val dayLabelFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
 
 @Composable
 fun HistoryScreen(
@@ -65,14 +69,26 @@ fun HistoryScreen(
             .toSortedMap(compareByDescending { it })
     }
 
-    // 7-day in-range percentage for summary card
     val weekAgo = Instant.now().minus(Duration.ofDays(7))
     val lastWeek = state.recentReadings.filter { it.time.isAfter(weekAgo) }
     val lowTarget = state.prefs.targetLowMgDl
     val highTarget = state.prefs.targetHighMgDl
-    val inRangeCount = lastWeek.count { it.level.inMilligramsPerDeciliter in lowTarget..highTarget }
+    val warningBuffer = state.prefs.warningBufferMgDl
+    val inRangeCount = lastWeek.count {
+        it.level.inMilligramsPerDeciliter in lowTarget..highTarget
+    }
     val inRangePct = if (lastWeek.isEmpty()) 0
     else (inRangeCount * 100.0 / lastWeek.size).roundToInt().coerceIn(0, 100)
+
+    // TIR bar buckets across the 7-day window
+    val mgsAll = lastWeek.map { it.level.inMilligramsPerDeciliter }
+    val low = mgsAll.count { it < lowTarget - warningBuffer }
+    val high = mgsAll.count { it > highTarget + warningBuffer }
+    val amber = mgsAll.count {
+        (it >= lowTarget - warningBuffer && it < lowTarget) ||
+            (it > highTarget && it <= highTarget + warningBuffer)
+    }
+    val ok = mgsAll.size - low - high - amber
 
     Scaffold(
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
@@ -80,7 +96,13 @@ fun HistoryScreen(
     ) { inner ->
         Column(Modifier.fillMaxSize().padding(inner)) {
             if (state.recentReadings.isEmpty()) {
-                EmptyHistoryState(Modifier.fillMaxSize().padding(24.dp))
+                Box(Modifier.fillMaxSize().padding(16.dp)) {
+                    RdEmptyState(
+                        icon = Icons.Outlined.WaterDrop,
+                        title = "No readings yet",
+                        body = "Once you sync your meter, your readings will appear here grouped by day.",
+                    )
+                }
                 return@Column
             }
 
@@ -89,42 +111,56 @@ fun HistoryScreen(
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
-                    top = 4.dp,
+                    top = 14.dp,
                     bottom = 24.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 item {
-                    Box(Modifier.fillMaxWidth()) {
-                        Text(
-                            "History",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.Center),
-                        )
+                    Column(Modifier.padding(vertical = 14.dp)) {
+                        RdOverlineText("7-day in target")
+                        Spacer(Modifier.height(4.dp))
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Text(
+                                "$inRangePct%",
+                                style = RdMono.DisplayLarge.copy(
+                                    fontSize = androidx.compose.ui.unit.TextUnit(56f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                    lineHeight = androidx.compose.ui.unit.TextUnit(56f, androidx.compose.ui.unit.TextUnitType.Sp),
+                                ),
+                                color = GlucoseInRange,
+                            )
+                            Text(
+                                "of ${lastWeek.size} reading${if (lastWeek.size == 1) "" else "s"}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                            )
+                        }
+                        Spacer(Modifier.height(16.dp))
+                        RdTIRBar(low = low, ok = ok, amber = amber, high = high)
                     }
                 }
 
-                item { WeekSummaryCard(inRangePct = inRangePct) }
-
                 grouped.forEach { (date, readings) ->
-                    item(key = "hdr-$date") {
-                        DayHeader(
-                            date = date,
-                            readings = readings,
-                            unit = state.prefs.unit,
-                            lowMgDl = lowTarget,
-                            highMgDl = highTarget,
+                    stickyHeaderItem(date, readings)
+                    items(readings, key = { it.metadata.id }) { r ->
+                        val ann = r.metadata.clientRecordId?.let(state.annotations::get)
+                        val effectiveMeal = ann?.mealOverride ?: r.relationToMeal
+                        val tgt = state.prefs.targetRangeFor(effectiveMeal)
+                        val color = bandColor(
+                            r.level.inMilligramsPerDeciliter,
+                            tgt.first,
+                            tgt.second,
+                            warningBuffer,
                         )
-                    }
-                    items(readings, keyProvider = { it.metadata.id }) { r ->
-                        val ann = r.metadata.clientRecordId
-                            ?.let(state.annotations::get)
-                        TimelineCard(
-                            reading = r,
-                            annotation = ann,
-                            unit = state.prefs.unit,
-                            prefs = state.prefs,
+                        RdReadingRow(
+                            bandColor = color,
+                            timeLabel = formatTimeOnly(r.time),
+                            mealLabel = relationShort(effectiveMeal) ?: "General",
+                            mgDlText = formatGlucose(r.level.inMilligramsPerDeciliter, state.prefs.unit),
+                            unitText = unitLabel(state.prefs.unit),
                             onClick = { selectedReading = r },
                         )
                     }
@@ -148,127 +184,58 @@ fun HistoryScreen(
     }
 }
 
-// Tiny wrapper so `items(list, keyProvider = ...)` reads naturally; the stdlib
-// `items` expects `key: (T) -> Any?`.
-private inline fun <T : Any> androidx.compose.foundation.lazy.LazyListScope.items(
-    list: List<T>,
-    noinline keyProvider: (T) -> Any,
-    crossinline content: @Composable (T) -> Unit,
-) = items(count = list.size, key = { keyProvider(list[it]) }) { content(list[it]) }
-
-@Composable
-private fun WeekSummaryCard(inRangePct: Int) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "7-Day Average",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    "$inRangePct% In-Target",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
-            InRangeBadge(pct = inRangePct)
-        }
-    }
-}
-
-@Composable
-private fun InRangeBadge(pct: Int) {
-    val color = when {
-        pct >= 70 -> Color(0xFF30A46C)
-        pct >= 50 -> Color(0xFFF5A524)
-        else -> Color(0xFFE5484D)
-    }
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .background(color.copy(alpha = 0.15f), CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            "$pct%",
-            style = MaterialTheme.typography.labelLarge,
-            color = color,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-@Composable
-private fun DayHeader(
+// Sticky day header — name + readings count + avg
+private fun androidx.compose.foundation.lazy.LazyListScope.stickyHeaderItem(
     date: LocalDate,
     readings: List<BloodGlucoseRecord>,
-    unit: GlucoseUnit,
-    lowMgDl: Double,
-    highMgDl: Double,
 ) {
+    item(key = "hdr-$date") {
+        DayHeader(date = date, readings = readings)
+    }
+}
+
+@Composable
+private fun DayHeader(date: LocalDate, readings: List<BloodGlucoseRecord>) {
     val today = LocalDate.now()
     val label = when {
         date == today -> "Today"
         date == today.minusDays(1) -> "Yesterday"
-        ChronoUnit.DAYS.between(date, today) < 7 -> dayHeaderFormatter.format(date)
-        else -> dayHeaderFormatter.format(date)
+        ChronoUnit.DAYS.between(date, today) < 7 -> dayLabelFormatter.format(date)
+        else -> dayLabelFormatter.format(date)
     }
-    val avgMgDl = readings.map { it.level.inMilligramsPerDeciliter }.average()
-    val low = readings.count { it.level.inMilligramsPerDeciliter < lowMgDl }
-    val high = readings.count { it.level.inMilligramsPerDeciliter > highMgDl }
-    val inRange = readings.size - low - high
+    val avg = if (readings.isEmpty()) "—"
+    else readings.map { it.level.inMilligramsPerDeciliter }.average().roundToInt().toString()
 
-    Column(
-        Modifier
+    Box(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 4.dp, end = 4.dp, top = 8.dp, bottom = 2.dp),
+            .background(MaterialTheme.colorScheme.surface),
     ) {
         Row(
-            Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 24.dp, bottom = 10.dp),
+            verticalAlignment = Alignment.Bottom,
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 label,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
             )
             Text(
-                "${readings.size} · avg ${formatGlucose(avgMgDl, unit)} ${unitLabel(unit)}",
-                style = MaterialTheme.typography.bodySmall,
+                "avg $avg",
+                style = RdMono.Caption,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Text(
-            "$inRange in range · $low low · $high high",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun EmptyHistoryState(modifier: Modifier = Modifier) {
-    Column(modifier) {
-        Text(
-            "No readings yet",
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Once you sync your meter, your readings will appear here grouped by day.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(MaterialTheme.colorScheme.outline)
+                .align(Alignment.BottomStart),
         )
     }
 }

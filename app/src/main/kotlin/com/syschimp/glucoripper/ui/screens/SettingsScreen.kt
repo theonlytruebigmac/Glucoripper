@@ -16,28 +16,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.outlined.Bloodtype
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.FileDownload
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Science
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RangeSlider
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -45,20 +43,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import android.content.IntentSender
 import com.syschimp.glucoripper.data.AutoPushMode
 import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.SyncHistoryEntry
 import com.syschimp.glucoripper.data.ThemeMode
+import com.syschimp.glucoripper.shared.mgDlToMmol
+import com.syschimp.glucoripper.shared.mmolToMgDl
 import com.syschimp.glucoripper.ui.PairedMeter
 import com.syschimp.glucoripper.ui.UiState
+import com.syschimp.glucoripper.ui.components.RdHairline
+import com.syschimp.glucoripper.ui.components.RdOverlineText
+import com.syschimp.glucoripper.ui.components.RdSegmented
+import com.syschimp.glucoripper.ui.components.RdSegmentedOption
+import com.syschimp.glucoripper.ui.components.rdSubtle
+import com.syschimp.glucoripper.ui.format.unitLabel
+import com.syschimp.glucoripper.ui.theme.RdMono
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 
 private val historyFormatter = DateTimeFormatter.ofPattern("MMM d · h:mm a")
 
@@ -93,22 +104,11 @@ fun SettingsScreen(
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
-                top = 4.dp,
-                bottom = 24.dp,
+                top = 14.dp,
+                bottom = 32.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item {
-                Box(Modifier.fillMaxWidth()) {
-                    Text(
-                        "Settings",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-
+            // Devices block (kept — pairing flow is non-trivial)
             item {
                 DevicesSection(
                     state = state,
@@ -120,87 +120,146 @@ fun SettingsScreen(
                 )
             }
 
+            // Display units
             item {
-                UnitCard(
-                    currentUnit = state.prefs.unit,
-                    onSaveUnit = onSaveUnit,
+                Section("Display units") {
+                    RdSegmented(
+                        options = listOf(
+                            RdSegmentedOption("mg/dL", "mg/dL", Icons.Outlined.Bloodtype),
+                            RdSegmentedOption("mmol/L", "mmol/L", Icons.Outlined.Science),
+                        ),
+                        selected = if (state.prefs.unit == GlucoseUnit.MG_PER_DL) "mg/dL" else "mmol/L",
+                        onSelect = {
+                            onSaveUnit(if (it == "mg/dL") GlucoseUnit.MG_PER_DL else GlucoseUnit.MMOL_PER_L)
+                        },
+                    )
+                }
+            }
+
+            // Targets
+            item {
+                Section("Targets · ${unitLabel(state.prefs.unit)}") {}
+            }
+            item {
+                TargetRow(
+                    label = "General",
+                    sub = "No meal context",
+                    low = state.prefs.targetLowMgDl,
+                    high = state.prefs.targetHighMgDl,
+                    unit = state.prefs.unit,
+                    minMgDl = 40.0,
+                    maxMgDl = 250.0,
+                    onSave = onSaveRange,
                 )
             }
             item {
-                TargetRangeCard(
-                    title = "General Target",
-                    subtitle = "Used when no meal context is recorded.",
-                    initialLow = state.prefs.targetLowMgDl,
-                    initialHigh = state.prefs.targetHighMgDl,
-                    onSaveRange = onSaveRange,
+                TargetRow(
+                    label = "Fasting",
+                    sub = "First reading of day",
+                    low = state.prefs.fastingLowMgDl,
+                    high = state.prefs.fastingHighMgDl,
+                    unit = state.prefs.unit,
+                    minMgDl = 40.0,
+                    maxMgDl = 250.0,
+                    onSave = onSaveFastingRange,
                 )
             }
             item {
-                TargetRangeCard(
-                    title = "Fasting Target",
-                    subtitle = "First reading of the day, before eating.",
-                    initialLow = state.prefs.fastingLowMgDl,
-                    initialHigh = state.prefs.fastingHighMgDl,
-                    onSaveRange = onSaveFastingRange,
+                TargetRow(
+                    label = "Pre-meal",
+                    sub = "Before eating",
+                    low = state.prefs.preMealLowMgDl,
+                    high = state.prefs.preMealHighMgDl,
+                    unit = state.prefs.unit,
+                    minMgDl = 40.0,
+                    maxMgDl = 250.0,
+                    onSave = onSavePreMealRange,
                 )
             }
             item {
-                TargetRangeCard(
-                    title = "Before Meal Target",
-                    subtitle = "Pre-prandial checks.",
-                    initialLow = state.prefs.preMealLowMgDl,
-                    initialHigh = state.prefs.preMealHighMgDl,
-                    onSaveRange = onSavePreMealRange,
+                TargetRow(
+                    label = "Post-meal",
+                    sub = "1–2h after eating",
+                    low = state.prefs.postMealLowMgDl,
+                    high = state.prefs.postMealHighMgDl,
+                    unit = state.prefs.unit,
+                    minMgDl = 40.0,
+                    maxMgDl = 300.0,
+                    onSave = onSavePostMealRange,
                 )
             }
             item {
-                TargetRangeCard(
-                    title = "After Meal Target",
-                    subtitle = "1–2 hours after eating.",
-                    initialLow = state.prefs.postMealLowMgDl,
-                    initialHigh = state.prefs.postMealHighMgDl,
-                    onSaveRange = onSavePostMealRange,
-                    sliderMax = 300f,
+                TargetRow(
+                    label = "Chart range",
+                    sub = "Y-axis bounds",
+                    low = state.prefs.chartMinMgDl,
+                    high = state.prefs.chartMaxMgDl,
+                    unit = state.prefs.unit,
+                    minMgDl = 0.0,
+                    maxMgDl = 400.0,
+                    onSave = onSaveChartRange,
                 )
             }
             item {
-                WarningBufferCard(
-                    initial = state.prefs.warningBufferMgDl,
+                BufferRow(
+                    value = state.prefs.warningBufferMgDl,
+                    unit = state.prefs.unit,
                     onSave = onSaveWarningBuffer,
                 )
             }
+
+            // Theme
             item {
-                ChartRangeCard(
-                    initialMin = state.prefs.chartMinMgDl,
-                    initialMax = state.prefs.chartMaxMgDl,
-                    onSaveRange = onSaveChartRange,
+                Section("Theme") {
+                    RdSegmented(
+                        options = ThemeMode.entries.map { RdSegmentedOption(it.name, it.label) },
+                        selected = state.prefs.themeMode.name,
+                        onSelect = { onSaveThemeMode(ThemeMode.valueOf(it)) },
+                    )
+                }
+            }
+
+            // Auto-push
+            item {
+                Section("Auto-push to Health Connect") {
+                    Text(
+                        when (state.prefs.autoPushMode) {
+                            AutoPushMode.OFF -> "Staged readings wait until you tap Send."
+                            AutoPushMode.AFTER_SYNC -> "Readings push immediately after each BLE sync."
+                            else -> "Readings push on a schedule even when the app is closed."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                }
+            }
+            items_(AutoPushMode.entries) { mode ->
+                AutoPushOptionRow(
+                    label = mode.label,
+                    selected = state.prefs.autoPushMode == mode,
+                    onClick = { onSaveAutoPushMode(mode) },
+                    isLast = mode == AutoPushMode.entries.last(),
                 )
             }
+
+            item { Spacer(Modifier.height(24.dp)) }
+
+            // Footer link rows
             item {
-                ThemeCard(
-                    current = state.prefs.themeMode,
-                    onSelect = onSaveThemeMode,
-                )
-            }
-            item {
-                AutoPushCard(
-                    current = state.prefs.autoPushMode,
-                    onSelect = onSaveAutoPushMode,
-                )
-            }
-            item {
-                ActionRowCard(
-                    icon = Icons.Outlined.ChevronRight,
-                    label = "Sync history",
+                LinkRow(
+                    icon = Icons.Outlined.History,
+                    title = "Sync history",
                     subtitle = "${state.syncHistory.size} recorded event${if (state.syncHistory.size == 1) "" else "s"}",
                     onClick = { showSyncHistory = true },
                 )
             }
+            item { Spacer(Modifier.height(8.dp)) }
             item {
-                ActionRowCard(
+                LinkRow(
                     icon = Icons.Outlined.FileDownload,
-                    label = "Export readings to CSV",
-                    subtitle = "Up to the 1,000 most recent readings",
+                    title = "Export to CSV",
+                    subtitle = "Up to 1,000 most recent readings",
                     onClick = onExportCsv,
                 )
             }
@@ -216,394 +275,364 @@ fun SettingsScreen(
     }
 }
 
-// ─────────── Display Units ───────────
+private fun <T> androidx.compose.foundation.lazy.LazyListScope.items_(
+    list: List<T>,
+    content: @Composable (T) -> Unit,
+) = items(count = list.size) { content(list[it]) }
+
+// ─────────── Section header ───────────
 
 @Composable
-private fun UnitCard(
-    currentUnit: GlucoseUnit,
-    onSaveUnit: (GlucoseUnit) -> Unit,
-) {
-    SettingsCard {
-        Text(
-            "Display Units",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "(mg/dL  |  mmol/L)",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            UnitTile(
-                selected = currentUnit == GlucoseUnit.MG_PER_DL,
-                icon = Icons.Outlined.Bloodtype,
-                label = "mg/dL",
-                onClick = { onSaveUnit(GlucoseUnit.MG_PER_DL) },
-                modifier = Modifier.weight(1f),
-            )
-            UnitTile(
-                selected = currentUnit == GlucoseUnit.MMOL_PER_L,
-                icon = Icons.Outlined.Science,
-                label = "mmol/L",
-                onClick = { onSaveUnit(GlucoseUnit.MMOL_PER_L) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun UnitTile(
-    selected: Boolean,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val border = if (selected) MaterialTheme.colorScheme.primary
-    else MaterialTheme.colorScheme.outlineVariant
-    val container = if (selected) MaterialTheme.colorScheme.primaryContainer
-    else MaterialTheme.colorScheme.surfaceContainer
-    val onContainer = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-    else MaterialTheme.colorScheme.onSurface
+private fun Section(overline: String, content: @Composable () -> Unit) {
     Column(
-        modifier = modifier
-            .height(80.dp)
-            .background(container, RoundedCornerShape(16.dp))
-            .border(
-                width = if (selected) 2.dp else 1.dp,
-                color = border,
-                shape = RoundedCornerShape(16.dp),
-            )
-            .clickable { onClick() }
-            .padding(12.dp),
-        verticalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Icon(icon, contentDescription = null, tint = onContainer, modifier = Modifier.size(28.dp))
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = onContainer,
-        )
-    }
-}
-
-// ─────────── Target Range ───────────
-
-@Composable
-private fun TargetRangeCard(
-    title: String,
-    subtitle: String,
-    initialLow: Double,
-    initialHigh: Double,
-    onSaveRange: (Double, Double) -> Unit,
-    sliderMin: Float = 40f,
-    sliderMax: Float = 250f,
-) {
-    var range by remember(initialLow, initialHigh) {
-        mutableStateOf(initialLow.toFloat()..initialHigh.toFloat())
-    }
-
-    SettingsCard {
-        Text(
-            "$title (mg/dL)",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            ValuePill(label = "Low", value = range.start.toInt())
-            ValuePill(label = "High", value = range.endInclusive.toInt())
-        }
-        RangeSlider(
-            value = range,
-            onValueChange = { range = it },
-            onValueChangeFinished = {
-                onSaveRange(range.start.toDouble(), range.endInclusive.toDouble())
-            },
-            valueRange = sliderMin..sliderMax,
-            steps = ((sliderMax - sliderMin) / 5).toInt() - 1,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(sliderMin.toInt().toString(), style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(sliderMax.toInt().toString(), style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun WarningBufferCard(
-    initial: Double,
-    onSave: (Double) -> Unit,
-) {
-    var value by remember(initial) { mutableStateOf(initial.toFloat()) }
-    SettingsCard {
-        Text(
-            "Warning Buffer (mg/dL)",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Amber cushion around each target. Readings inside the buffer show as 'warning' instead of high/low. Set to 0 for strict red/green.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            ValuePill(label = "±", value = value.toInt())
-            Text(
-                if (value.toInt() == 0) "Off" else "Applied both sides of range",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Slider(
-            value = value,
-            onValueChange = { value = it },
-            onValueChangeFinished = { onSave(value.toDouble()) },
-            valueRange = 0f..50f,
-            steps = 9,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("0", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("50", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun ChartRangeCard(
-    initialMin: Double,
-    initialMax: Double,
-    onSaveRange: (Double, Double) -> Unit,
-) {
-    var range by remember(initialMin, initialMax) {
-        mutableStateOf(initialMin.toFloat()..initialMax.toFloat())
-    }
-    SettingsCard {
-        Text(
-            "Chart Range (mg/dL)",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Y-axis bounds for the dashboard chart.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            ValuePill(label = "Min", value = range.start.toInt())
-            ValuePill(label = "Max", value = range.endInclusive.toInt())
-        }
-        RangeSlider(
-            value = range,
-            onValueChange = { range = it },
-            onValueChangeFinished = {
-                onSaveRange(range.start.toDouble(), range.endInclusive.toDouble())
-            },
-            valueRange = 0f..400f,
-            steps = 400 / 10 - 1,
-        )
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("0", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text("400", style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun ValuePill(label: String, value: Int) {
-    Row(
         modifier = Modifier
-            .background(
-                MaterialTheme.colorScheme.surfaceContainer,
-                RoundedCornerShape(20.dp),
-            )
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .fillMaxWidth()
+            .padding(top = 28.dp, bottom = 10.dp),
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            value.toString(),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
+        RdOverlineText(overline)
+        Spacer(Modifier.height(10.dp))
+        content()
     }
 }
 
-// ─────────── Theme ───────────
+// ─────────── Target/range/chart row ───────────
 
 @Composable
-private fun ThemeCard(
-    current: ThemeMode,
-    onSelect: (ThemeMode) -> Unit,
-) {
-    SettingsCard {
-        Text(
-            "Theme",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        ThemeMode.entries.forEach { mode ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = current == mode,
-                        onClick = { onSelect(mode) },
-                        role = Role.RadioButton,
-                    )
-                    .padding(vertical = 6.dp),
-            ) {
-                RadioButton(
-                    selected = current == mode,
-                    onClick = { onSelect(mode) },
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(mode.label, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-    }
-}
-
-// ─────────── Auto-push ───────────
-
-@Composable
-private fun AutoPushCard(
-    current: AutoPushMode,
-    onSelect: (AutoPushMode) -> Unit,
-) {
-    SettingsCard {
-        Text(
-            "Auto-push to Health Connect",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            when (current) {
-                AutoPushMode.OFF -> "Staged readings wait until you tap Send."
-                AutoPushMode.AFTER_SYNC -> "Readings push immediately after each BLE sync."
-                else -> "Readings push on a schedule even when the app is closed."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(Modifier.height(4.dp))
-        AutoPushMode.entries.forEach { mode ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = current == mode,
-                        onClick = { onSelect(mode) },
-                        role = Role.RadioButton,
-                    )
-                    .padding(vertical = 6.dp),
-            ) {
-                RadioButton(
-                    selected = current == mode,
-                    onClick = { onSelect(mode) },
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(mode.label, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-    }
-}
-
-// ─────────── Action row ───────────
-
-@Composable
-private fun ActionRowCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+private fun TargetRow(
     label: String,
-    subtitle: String?,
-    onClick: () -> Unit,
+    sub: String,
+    low: Double,
+    high: Double,
+    unit: GlucoseUnit,
+    minMgDl: Double,
+    maxMgDl: Double,
+    onSave: (Double, Double) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+    var lowState by remember(low, high) { mutableStateOf(low) }
+    var highState by remember(low, high) { mutableStateOf(high) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Medium)
-                if (subtitle != null) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(
+                    label,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Text(
+                    sub,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    ),
+                    color = rdSubtle(),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Text(
+                "${displayInUnit(lowState, unit)}–${displayInUnit(highState, unit)}",
+                style = RdMono.RowSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            GlucoseNumberField(
+                label = "Low",
+                valueMgDl = lowState,
+                unit = unit,
+                minMgDl = minMgDl,
+                maxMgDl = maxMgDl,
+                onCommitMgDl = { newLow ->
+                    if (newLow < highState) {
+                        lowState = newLow
+                        onSave(newLow, highState)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            )
+            GlucoseNumberField(
+                label = "High",
+                valueMgDl = highState,
+                unit = unit,
+                minMgDl = minMgDl,
+                maxMgDl = maxMgDl,
+                onCommitMgDl = { newHigh ->
+                    if (newHigh > lowState) {
+                        highState = newHigh
+                        onSave(lowState, newHigh)
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        RdHairline()
+    }
+}
+
+@Composable
+private fun BufferRow(
+    value: Double,
+    unit: GlucoseUnit,
+    onSave: (Double) -> Unit,
+) {
+    var v by remember(value) { mutableStateOf(value) }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Warning buffer",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontWeight = FontWeight.Medium,
+                    ),
+                )
+                Text(
+                    "Amber cushion ± ${unitLabel(unit)}",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    ),
+                    color = rdSubtle(),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Text(
+                "± ${displayInUnit(v, unit)}",
+                style = RdMono.RowSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            GlucoseNumberField(
+                label = "± Buffer",
+                valueMgDl = v,
+                unit = unit,
+                minMgDl = 0.0,
+                maxMgDl = 50.0,
+                onCommitMgDl = {
+                    v = it
+                    onSave(it)
+                },
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                if (v.roundToInt() == 0) "Off" else "Both sides of range",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        RdHairline()
+    }
+}
+
+private fun displayInUnit(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
+    GlucoseUnit.MG_PER_DL -> mgDl.roundToInt().toString()
+    GlucoseUnit.MMOL_PER_L -> "%.1f".format(Locale.US, mgDl.mgDlToMmol())
+}
+
+// ─────────── Auto-push option row ───────────
+
+@Composable
+private fun AutoPushOptionRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    isLast: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 13.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier
+                .size(14.dp)
+                .background(
+                    color = androidx.compose.ui.graphics.Color.Transparent,
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(
+                Modifier
+                    .size(14.dp)
+                    .border(
+                        width = 1.5.dp,
+                        color = if (selected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+                        shape = CircleShape,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selected) {
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .background(MaterialTheme.colorScheme.onSurface, CircleShape),
                     )
                 }
             }
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+    }
+    if (!isLast) RdHairline()
+}
+
+// ─────────── Link row (footer) ───────────
+
+@Composable
+private fun LinkRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surfaceContainerLow,
+                RoundedCornerShape(12.dp),
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(18.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.Medium,
+                ),
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = androidx.compose.ui.unit.TextUnit(10f, androidx.compose.ui.unit.TextUnitType.Sp),
+                    ),
+                    color = rdSubtle(),
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+        }
+        Icon(
+            Icons.Outlined.ChevronRight,
+            contentDescription = null,
+            tint = rdSubtle(),
+            modifier = Modifier.size(14.dp),
+        )
     }
 }
 
+// ─────────── GlucoseNumberField (numeric input for targets) ───────────
+
 @Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) { content() }
+private fun GlucoseNumberField(
+    label: String,
+    valueMgDl: Double,
+    unit: GlucoseUnit,
+    minMgDl: Double,
+    maxMgDl: Double,
+    onCommitMgDl: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canonical = formatForUnit(valueMgDl, unit)
+    var draft by remember(valueMgDl, unit) { mutableStateOf(canonical) }
+    var hadFocus by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    fun commit() {
+        val parsed = draft.replace(',', '.').toDoubleOrNull()
+        if (parsed == null) {
+            draft = canonical
+            return
+        }
+        val mgDl = when (unit) {
+            GlucoseUnit.MG_PER_DL -> parsed
+            GlucoseUnit.MMOL_PER_L -> parsed.mmolToMgDl()
+        }.coerceIn(minMgDl, maxMgDl)
+        onCommitMgDl(mgDl)
+        draft = canonical
     }
+
+    OutlinedTextField(
+        value = draft,
+        onValueChange = { new ->
+            if (new.isEmpty() || new.matches(allowedCharsRegex(unit))) draft = new
+        },
+        label = { Text(label) },
+        suffix = {
+            Text(
+                unitLabel(unit),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = when (unit) {
+                GlucoseUnit.MG_PER_DL -> KeyboardType.Number
+                GlucoseUnit.MMOL_PER_L -> KeyboardType.Decimal
+            },
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(onDone = {
+            commit()
+            focusManager.clearFocus()
+        }),
+        modifier = modifier.onFocusChanged { state ->
+            if (hadFocus && !state.isFocused) commit()
+            hadFocus = state.isFocused
+        },
+    )
+}
+
+private fun formatForUnit(mgDl: Double, unit: GlucoseUnit): String = when (unit) {
+    GlucoseUnit.MG_PER_DL -> mgDl.roundToInt().toString()
+    GlucoseUnit.MMOL_PER_L -> "%.1f".format(Locale.US, mgDl.mgDlToMmol())
+}
+
+private fun allowedCharsRegex(unit: GlucoseUnit): Regex = when (unit) {
+    GlucoseUnit.MG_PER_DL -> Regex("""\d{1,3}""")
+    GlucoseUnit.MMOL_PER_L -> Regex("""\d{1,2}([.,]\d{0,1})?""")
 }
 
 // ─────────── Sync history sheet ───────────
@@ -638,20 +667,22 @@ private fun SyncHistorySheet(
             if (entries.isEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     ),
                 ) {
                     Text(
-                        "Nothing synced yet.",
+                        "No sync attempts recorded yet.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
                     )
                 }
             } else {
-                entries.forEach { e -> SyncHistoryRow(e) }
+                entries.forEach { entry ->
+                    SyncHistoryRow(entry)
+                }
             }
         }
     }
@@ -659,51 +690,30 @@ private fun SyncHistorySheet(
 
 @Composable
 private fun SyncHistoryRow(entry: SyncHistoryEntry) {
-    val success = entry.success
-    val color = if (success) Color(0xFF30A46C) else Color(0xFFE5484D)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(color.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    if (success) Icons.Default.CheckCircle else Icons.Default.Error,
-                    contentDescription = null,
-                    tint = color,
-                    modifier = Modifier.size(20.dp),
-                )
+        Column(Modifier.weight(1f)) {
+            val summary = if (entry.success) {
+                "Synced · ${entry.pulled} pulled · ${entry.written} written"
+            } else {
+                "Failed · ${entry.message ?: "no detail"}"
             }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    historyFormatter.format(
-                        Instant.ofEpochMilli(entry.timestampMillis)
-                            .atZone(ZoneId.systemDefault())
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    if (success) {
-                        "Pulled ${entry.pulled}, wrote ${entry.written}" +
-                                if (entry.skippedControl > 0) ", skipped ${entry.skippedControl}" else ""
-                    } else (entry.message ?: "Failed"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                historyFormatter.format(
+                    Instant.ofEpochMilli(entry.timestampMillis).atZone(ZoneId.systemDefault())
+                ),
+                style = RdMono.Caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

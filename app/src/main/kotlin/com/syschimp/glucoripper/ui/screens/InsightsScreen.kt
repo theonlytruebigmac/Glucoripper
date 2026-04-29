@@ -1,24 +1,25 @@
 package com.syschimp.glucoripper.ui.screens
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,10 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -40,20 +37,26 @@ import com.syschimp.glucoripper.data.GlucoseUnit
 import com.syschimp.glucoripper.data.stats.Aggregate
 import com.syschimp.glucoripper.data.stats.ContextAggregate
 import com.syschimp.glucoripper.data.stats.GlucoseStats
-import com.syschimp.glucoripper.data.stats.PeriodDelta
+import com.syschimp.glucoripper.data.stats.PairedMealDelta
 import com.syschimp.glucoripper.data.stats.StatsWindow
 import com.syschimp.glucoripper.data.stats.computeStats
 import com.syschimp.glucoripper.ui.UiState
+import com.syschimp.glucoripper.ui.components.RdHairline
+import com.syschimp.glucoripper.ui.components.RdOverlineText
+import com.syschimp.glucoripper.ui.components.RdSectionHeader
+import com.syschimp.glucoripper.ui.components.RdStatCard
+import com.syschimp.glucoripper.ui.components.RdTIRBar
+import com.syschimp.glucoripper.ui.components.rdSubtle
 import com.syschimp.glucoripper.ui.format.formatGlucose
 import com.syschimp.glucoripper.ui.format.unitLabel
-import com.syschimp.glucoripper.ui.theme.GlucoseHigh
+import com.syschimp.glucoripper.ui.theme.GlucoseElevated
 import com.syschimp.glucoripper.ui.theme.GlucoseInRange
 import com.syschimp.glucoripper.ui.theme.GlucoseLow
-import kotlin.math.abs
+import com.syschimp.glucoripper.ui.theme.RdMono
 
 @Composable
 fun InsightsScreen(state: UiState) {
-    var window by remember { mutableStateOf(StatsWindow.W14) }
+    var window by remember { mutableStateOf(StatsWindow.W7) }
     val stats = remember(state.recentReadings, state.annotations, state.prefs, window) {
         computeStats(
             readings = state.recentReadings,
@@ -70,650 +73,645 @@ fun InsightsScreen(state: UiState) {
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(inner),
             contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp,
+                start = 16.dp, end = 16.dp, top = 14.dp, bottom = 24.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item {
-                Box(Modifier.fillMaxWidth()) {
-                    Text(
-                        "Insights",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-
-            item {
-                WindowChips(selected = window, onSelect = { window = it })
-            }
+            item { PeriodSelector(window, onSelect = { window = it }) }
+            item { Spacer(Modifier.height(18.dp)) }
 
             if (stats.overall.count == 0) {
-                item { EmptyInsightsCard(window) }
+                item {
+                    Text(
+                        "No readings in the last ${window.label}.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 40.dp),
+                    )
+                }
                 return@LazyColumn
             }
 
+            item { HeroAvgAndGmi(stats, state.prefs.unit) }
+            item { Spacer(Modifier.height(18.dp)) }
             item {
-                OverviewCard(
-                    stats = stats,
-                    unit = state.prefs.unit,
-                )
+                RdOverlineText("Time in range")
+                Spacer(Modifier.height(8.dp))
+                InsightsTIR(stats)
+                Spacer(Modifier.height(20.dp))
+                RdHairline()
             }
+            item { MetricStrip(stats, state.prefs.unit) }
+            item { RdHairline() }
 
             item {
-                PeriodDeltaCard(
-                    delta = stats.periodDelta,
-                    window = stats.window,
-                    unit = state.prefs.unit,
-                )
-            }
-
-            item {
-                SectionHeader("By meal context")
-            }
-            stats.byContext.forEach { ctx ->
-                item(key = "ctx-${ctx.relationCode}") {
-                    ContextCard(
-                        ctx = ctx,
-                        unit = state.prefs.unit,
+                RdSectionHeader(overline = "vs prior ${window.label}")
+                if (stats.periodDelta.priorAvgMgDl == null) {
+                    Text(
+                        "No prior-period data yet for comparison.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
                     )
+                } else {
+                    PeriodDeltaRow(stats, state.prefs.unit)
                 }
             }
 
             item {
-                PairedMealCard(
-                    delta = stats.pairedMealDelta,
-                    unit = state.prefs.unit,
+                RdSectionHeader(overline = "By meal context")
+            }
+            stats.byContext.forEach { ctx ->
+                item(key = "ctx-${ctx.relationCode}") {
+                    ContextRangeCard(ctx = ctx, unit = state.prefs.unit)
+                }
+            }
+
+            item {
+                RdSectionHeader(
+                    overline = "Post-meal rise",
+                    trailing = {
+                        Text(
+                            "n=${stats.pairedMealDelta.pairCount}",
+                            style = RdMono.Caption,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
                 )
+                PostMealBars(stats.pairedMealDelta, unit = state.prefs.unit)
             }
 
             item {
-                TimeOfDayCard(
-                    stats = stats,
-                    unit = state.prefs.unit,
-                )
+                RdSectionHeader(overline = "By time of day")
+                Spacer(Modifier.height(8.dp))
+                TimeOfDayRow(stats, state.prefs.unit)
             }
 
             item {
-                ContextMixCard(stats = stats)
+                RdSectionHeader(overline = "Tag mix")
+                TagMixRow(stats)
             }
 
             item {
-                EventsCard(aggregate = stats.overall, unit = state.prefs.unit)
+                RdSectionHeader(overline = "Events")
+                Spacer(Modifier.height(8.dp))
+                EventsRow(stats.overall, state.prefs.unit)
             }
         }
     }
 }
 
+// ─────────── Period selector (full-width 4-button row) ───────────
+
 @Composable
-private fun WindowChips(
+private fun PeriodSelector(
     selected: StatsWindow,
     onSelect: (StatsWindow) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         StatsWindow.entries.forEach { w ->
-            FilterChip(
-                selected = selected == w,
-                onClick = { onSelect(w) },
-                label = { Text(w.label) },
-            )
+            val isSel = selected == w
+            Box(
+                Modifier
+                    .weight(1f)
+                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                    .background(
+                        if (isSel) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                        RoundedCornerShape(8.dp),
+                    )
+                    .clickable { onSelect(w) }
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    w.label,
+                    style = RdMono.Label.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (isSel) MaterialTheme.colorScheme.surface
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
 
-@Composable
-private fun SectionHeader(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 4.dp, top = 4.dp),
-    )
-}
+// ─────────── Hero: huge mono avg + GMI ───────────
 
 @Composable
-private fun EmptyInsightsCard(window: StatsWindow) {
-    InsightsCard {
-        Text(
-            "Not enough data",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "No readings in the last ${window.label}. Sync your meter to start building insights.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun OverviewCard(stats: GlucoseStats, unit: GlucoseUnit) {
-    InsightsCard {
-        Text(
-            "Overview · last ${stats.window.label}",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(verticalAlignment = Alignment.Bottom) {
+private fun HeroAvgAndGmi(stats: GlucoseStats, unit: GlucoseUnit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(18.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            RdOverlineText("Average · ${unitLabel(unit)}")
+            Spacer(Modifier.height(4.dp))
             Text(
                 stats.overall.avgMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                style = MaterialTheme.typography.displayMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.width(6.dp))
-            Text(
-                unitLabel(unit),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(
-                "avg",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp),
+                style = RdMono.DisplayLarge,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
-        HorizontalDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MetricBlock(
-                label = "GMI",
-                value = stats.overall.gmiPercent?.let { "%.1f%%".format(it) } ?: "—",
-                sub = "est. A1C",
-            )
-            MetricBlock(
-                label = "Time in range",
-                value = stats.overall.inRangePct?.let { "$it%" } ?: "—",
-                sub = "${stats.overall.count} reading${if (stats.overall.count == 1) "" else "s"}",
-                valueColor = GlucoseInRange,
-            )
-            MetricBlock(
-                label = "Variability",
-                value = stats.overall.cvPercent?.let { "%.0f%%".format(it) } ?: "—",
-                sub = cvQualityLabel(stats.overall.cvPercent),
-                valueColor = cvQualityColor(stats.overall.cvPercent),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MetricBlock(
-                label = "Median",
-                value = stats.overall.medianMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Range",
-                value = if (stats.overall.minMgDl != null && stats.overall.maxMgDl != null) {
-                    "${formatGlucose(stats.overall.minMgDl, unit)}–${formatGlucose(stats.overall.maxMgDl, unit)}"
-                } else "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Per day",
-                value = stats.readingsPerDay?.let { "%.1f".format(it) } ?: "—",
-                sub = "readings",
+        Column(modifier = Modifier.padding(bottom = 8.dp)) {
+            RdOverlineText("GMI")
+            Spacer(Modifier.height(4.dp))
+            Text(
+                stats.overall.gmiPercent?.let { "%.1f%%".format(it) } ?: "—",
+                style = RdMono.LargeReadout,
+                color = MaterialTheme.colorScheme.onSurface,
             )
         }
     }
 }
 
+// ─────────── TIR helpers ───────────
+
 @Composable
-private fun MetricBlock(
+private fun InsightsTIR(stats: GlucoseStats) {
+    val a = stats.overall
+    val total = a.count.coerceAtLeast(1)
+    val low = a.lowPct?.let { it * total / 100 } ?: 0
+    val high = a.highPct?.let { it * total / 100 } ?: 0
+    val ok = (a.inRangePct ?: 0) * total / 100
+    val amber = (total - low - ok - high).coerceAtLeast(0)
+    RdTIRBar(low = low, ok = ok, amber = amber, high = high)
+}
+
+// ─────────── 4-column metric strip ───────────
+
+@Composable
+private fun MetricStrip(stats: GlucoseStats, unit: GlucoseUnit) {
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 20.dp),
+    ) {
+        Metric(
+            label = "Variability",
+            value = stats.overall.cvPercent?.let { "%.0f%%".format(it) } ?: "—",
+            valueColor = cvColor(stats.overall.cvPercent),
+            withDivider = false,
+            modifier = Modifier.weight(1f),
+        )
+        Metric(
+            label = "Median",
+            value = stats.overall.medianMgDl?.let { formatGlucose(it, unit) } ?: "—",
+            withDivider = true,
+            modifier = Modifier.weight(1f),
+        )
+        Metric(
+            label = "Range",
+            value = if (stats.overall.minMgDl != null && stats.overall.maxMgDl != null)
+                "${formatGlucose(stats.overall.minMgDl, unit)}–${formatGlucose(stats.overall.maxMgDl, unit)}"
+            else "—",
+            withDivider = true,
+            small = true,
+            modifier = Modifier.weight(1f),
+        )
+        Metric(
+            label = "Per day",
+            value = stats.readingsPerDay?.let { "%.1f".format(it) } ?: "—",
+            withDivider = true,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun Metric(
     label: String,
     value: String,
-    sub: String? = null,
+    withDivider: Boolean,
+    small: Boolean = false,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-            color = valueColor,
-        )
-        if (sub != null) {
+    Row(modifier) {
+        if (withDivider) {
+            Box(
+                Modifier
+                    .width(1.dp)
+                    .fillMaxHeight()
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+        }
+        Column(Modifier.padding(horizontal = 10.dp)) {
             Text(
-                sub,
-                style = MaterialTheme.typography.labelSmall,
+                label.uppercase(),
+                style = RdMono.Tiny.copy(letterSpacing = 1.2f.sp(), fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                value,
+                style = if (small) RdMono.RowSmall else RdMono.LargeReadout,
+                color = valueColor,
             )
         }
     }
 }
 
+// Local helper to produce a sp TextUnit from Int — matches `0.5f.sp` ergonomics
+private fun Float.sp(): androidx.compose.ui.unit.TextUnit =
+    androidx.compose.ui.unit.TextUnit(this, androidx.compose.ui.unit.TextUnitType.Sp)
+
+// ─────────── Period delta ───────────
+
 @Composable
-private fun PeriodDeltaCard(
-    delta: PeriodDelta,
-    window: StatsWindow,
-    unit: GlucoseUnit,
-) {
-    InsightsCard {
-        Text(
-            "Trend vs prior ${window.label}",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
+private fun PeriodDeltaRow(stats: GlucoseStats, unit: GlucoseUnit) {
+    val d = stats.periodDelta
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
+        DeltaBlock(
+            label = "Avg glucose",
+            now = d.currentAvgMgDl?.let { formatGlucose(it, unit) + " " + unitLabel(unit) } ?: "—",
+            delta = d.avgDeltaMgDl?.let { "%+.0f %s".format(it, unitLabel(unit)) },
+            isGood = d.avgDeltaMgDl?.let { it < 0 },
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            TrendBlock(
-                label = "Avg glucose",
-                nowValue = delta.currentAvgMgDl?.let { formatGlucose(it, unit) + " " + unitLabel(unit) } ?: "—",
-                deltaText = delta.avgDeltaMgDl?.let {
-                    "%+.0f %s".format(it, unitLabel(unit))
-                },
-                deltaIsGood = delta.avgDeltaMgDl?.let { it < 0 },
-            )
-            TrendBlock(
-                label = "In-range",
-                nowValue = delta.currentTirPct?.let { "$it%" } ?: "—",
-                deltaText = delta.tirDeltaPct?.let {
-                    "%+d pts".format(it)
-                },
-                deltaIsGood = delta.tirDeltaPct?.let { it > 0 },
-            )
-        }
-        if (delta.priorAvgMgDl == null) {
-            Text(
-                "No prior-period data yet for comparison.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        DeltaBlock(
+            label = "In-range",
+            now = d.currentTirPct?.let { "$it%" } ?: "—",
+            delta = d.tirDeltaPct?.let { "%+d pts".format(it) },
+            isGood = d.tirDeltaPct?.let { it > 0 },
+        )
     }
 }
 
 @Composable
-private fun TrendBlock(
-    label: String,
-    nowValue: String,
-    deltaText: String?,
-    deltaIsGood: Boolean?,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+private fun DeltaBlock(label: String, now: String, delta: String?, isGood: Boolean?) {
+    Column {
+        RdOverlineText(label)
+        Spacer(Modifier.height(4.dp))
         Text(
-            label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            now,
+            style = RdMono.LargeReadout,
+            color = MaterialTheme.colorScheme.onSurface,
         )
-        Text(
-            nowValue,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.SemiBold,
-        )
-        if (deltaText != null) {
-            val color = when (deltaIsGood) {
+        if (delta != null) {
+            Spacer(Modifier.height(4.dp))
+            val color = when (isGood) {
                 true -> GlucoseInRange
-                false -> GlucoseHigh
+                false -> GlucoseElevated
                 null -> MaterialTheme.colorScheme.onSurfaceVariant
             }
             Text(
-                deltaText,
-                style = MaterialTheme.typography.labelMedium,
+                delta,
+                style = RdMono.Caption.copy(fontWeight = FontWeight.SemiBold),
                 color = color,
-                fontWeight = FontWeight.Medium,
+            )
+        }
+    }
+}
+
+// ─────────── Context range card (horizontal range bar) ───────────
+
+@Composable
+private fun ContextRangeCard(ctx: ContextAggregate, unit: GlucoseUnit) {
+    val ag = ctx.aggregate
+    val pct = ag.inRangePct ?: 0
+    val ok = pct >= 70
+    val pctColor = if (ok) GlucoseInRange else GlucoseElevated
+
+    val min = 50.0
+    val max = 200.0
+    val lo = ctx.targetLowMgDl
+    val hi = ctx.targetHighMgDl
+    val avg = ag.avgMgDl ?: ((lo + hi) / 2.0)
+    val loF = ((lo - min) / (max - min)).coerceIn(0.0, 1.0).toFloat()
+    val hiF = ((hi - min) / (max - min)).coerceIn(0.0, 1.0).toFloat()
+    val avgF = ((avg - min) / (max - min)).coerceIn(0.0, 1.0).toFloat()
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+    ) {
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                ctx.label,
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                "tgt ${formatGlucose(lo, unit)}–${formatGlucose(hi, unit)}",
+                style = RdMono.Caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "$pct%",
+                style = RdMono.Label.copy(fontWeight = FontWeight.SemiBold),
+                color = pctColor,
+            )
+        }
+        if (ag.count == 0) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "No ${ctx.label.lowercase()} readings yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
+        Spacer(Modifier.height(10.dp))
+        BoxWithConstraints(Modifier.fillMaxWidth().height(20.dp)) {
+            val w = maxWidth
+            // base track
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 9.dp)
+                    .height(2.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
+            // active segment
+            Box(
+                Modifier
+                    .padding(start = w * loF, top = 9.dp)
+                    .height(2.dp)
+                    .width(w * (hiF - loF))
+                    .background(MaterialTheme.colorScheme.onSurface),
+            )
+            // avg dot
+            Box(
+                Modifier
+                    .padding(start = w * avgF - 6.dp, top = 4.dp)
+                    .size(12.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surface,
+                        CircleShape,
+                    )
+                    .border(
+                        2.dp,
+                        MaterialTheme.colorScheme.onSurface,
+                        CircleShape,
+                    ),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "${lo.toInt()}",
+                style = RdMono.Tiny,
+                color = rdSubtle(),
+            )
+            Text(
+                "avg ${avg.toInt()}",
+                style = RdMono.Tiny,
+                color = rdSubtle(),
+            )
+            Text(
+                "${hi.toInt()}",
+                style = RdMono.Tiny,
+                color = rdSubtle(),
+            )
+        }
+        Spacer(Modifier.height(6.dp))
+        RdHairline()
+    }
+}
+
+// ─────────── Post-meal rise (dual horizontal bars) ───────────
+
+@Composable
+private fun PostMealBars(d: PairedMealDelta, unit: GlucoseUnit) {
+    if (d.pairCount == 0) {
+        Text(
+            "No matched pre/post-meal pairs yet. Tag readings as Before meal and After meal to enable this metric.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        return
+    }
+    val pre = d.avgPreMgDl ?: 0.0
+    val post = d.avgPostMgDl ?: 0.0
+    val delta = d.avgDeltaMgDl ?: 0.0
+    val maxV = maxOf(pre, post, 200.0)
+    val preF = (pre / maxV).toFloat()
+    val postF = (post / maxV).toFloat()
+
+    Column(Modifier.padding(top = 8.dp)) {
+        DualBar(label = "Before", value = pre.toInt(), fraction = preF, unit = unitLabel(unit), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        DualBar(label = "After", value = post.toInt(), fraction = postF, unit = unitLabel(unit), color = GlucoseElevated)
+        Row(
+            Modifier.padding(start = 66.dp, top = 8.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                "+${delta.toInt()}",
+                style = RdMono.Label.copy(fontWeight = FontWeight.SemiBold),
+                color = GlucoseElevated,
+            )
+            Text(
+                "average climb after eating",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
 }
 
 @Composable
-private fun ContextCard(ctx: ContextAggregate, unit: GlucoseUnit) {
-    InsightsCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
+private fun DualBar(label: String, value: Int, fraction: Float, unit: String, color: Color) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(56.dp),
+        )
+        BoxWithConstraints(
+            Modifier
+                .weight(1f)
+                .height(14.dp)
+                .background(MaterialTheme.colorScheme.surfaceContainerLow, RoundedCornerShape(4.dp)),
         ) {
-            Column {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .width(maxWidth * fraction.coerceIn(0f, 1f))
+                    .background(color, RoundedCornerShape(4.dp)),
+            )
+        }
+        Row(
+            modifier = Modifier.width(60.dp),
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            Text(
+                value.toString(),
+                style = RdMono.RowSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                unit,
+                style = RdMono.Tiny,
+                color = rdSubtle(),
+                modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
+            )
+        }
+    }
+}
+
+// ─────────── By time of day (4-column mini bar chart) ───────────
+
+@Composable
+private fun TimeOfDayRow(stats: GlucoseStats, unit: GlucoseUnit) {
+    val maxAvg = stats.timeOfDay.mapNotNull { it.avgMgDl }.maxOrNull() ?: 1.0
+    val barMax = maxOf(maxAvg, 200.0)
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        stats.timeOfDay.forEach { bucket ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                val f = ((bucket.avgMgDl ?: 0.0) / barMax).coerceIn(0.0, 1.0).toFloat()
+                val barColor = when {
+                    bucket.avgMgDl == null -> MaterialTheme.colorScheme.outlineVariant
+                    bucket.avgMgDl > 130.0 -> GlucoseElevated
+                    else -> GlucoseInRange
+                }
+                Box(
+                    Modifier
+                        .width(24.dp)
+                        .height(90.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(3.dp)),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height((90 * f).dp)
+                            .background(barColor, RoundedCornerShape(3.dp)),
+                    )
+                }
                 Text(
-                    ctx.label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    bucket.avgMgDl?.let { it.toInt().toString() } ?: "—",
+                    style = RdMono.Label,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    "target ${formatGlucose(ctx.targetLowMgDl, unit)}–${formatGlucose(ctx.targetHighMgDl, unit)} ${unitLabel(unit)}",
-                    style = MaterialTheme.typography.labelSmall,
+                    bucket.label,
+                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 9f.sp()),
+                    color = rdSubtle(),
+                )
+            }
+        }
+    }
+}
+
+// ─────────── Tag mix ───────────
+
+@Composable
+private fun TagMixRow(stats: GlucoseStats) {
+    val palette = listOf(
+        GlucoseInRange,
+        MaterialTheme.colorScheme.onSurface,
+        GlucoseElevated,
+        MaterialTheme.colorScheme.onSurfaceVariant,
+        rdSubtle(),
+    )
+    val total = stats.contextMix.sumOf { it.count }.coerceAtLeast(1)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp)
+            .height(6.dp),
+    ) {
+        stats.contextMix.forEachIndexed { i, slice ->
+            Box(
+                Modifier
+                    .weight(slice.count.toFloat().coerceAtLeast(0.001f))
+                    .fillMaxHeight()
+                    .background(palette[i % palette.size]),
+            )
+        }
+    }
+    Spacer(Modifier.height(14.dp))
+    Column {
+        stats.contextMix.forEachIndexed { i, slice ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    Modifier
+                        .size(8.dp)
+                        .background(palette[i % palette.size], RoundedCornerShape(2.dp)),
+                )
+                Text(
+                    slice.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "${slice.percent}% · ${slice.count}",
+                    style = RdMono.Caption,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            TirPill(pct = ctx.aggregate.inRangePct)
-        }
-        if (ctx.aggregate.count == 0) {
-            Text(
-                "No ${ctx.label.lowercase()} readings in this window.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@InsightsCard
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MetricBlock(
-                label = "Average",
-                value = ctx.aggregate.avgMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Median",
-                value = ctx.aggregate.medianMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Range",
-                value = if (ctx.aggregate.minMgDl != null && ctx.aggregate.maxMgDl != null) {
-                    "${formatGlucose(ctx.aggregate.minMgDl, unit)}–${formatGlucose(ctx.aggregate.maxMgDl, unit)}"
-                } else "—",
-                sub = "n=${ctx.aggregate.count}",
-            )
         }
     }
 }
 
+// ─────────── Events ───────────
+
 @Composable
-private fun TirPill(pct: Int?) {
-    val color = when {
-        pct == null -> MaterialTheme.colorScheme.outline
-        pct >= 70 -> Color(0xFF30A46C)
-        pct >= 50 -> Color(0xFFF5A524)
-        else -> Color(0xFFE5484D)
-    }
-    Box(
-        modifier = Modifier
-            .background(color.copy(alpha = 0.15f), RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+private fun EventsRow(a: Aggregate, unit: GlucoseUnit) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            pct?.let { "$it%  in range" } ?: "— in range",
-            style = MaterialTheme.typography.labelMedium,
-            color = color,
-            fontWeight = FontWeight.SemiBold,
+        RdStatCard(
+            label = "Hypo",
+            value = a.hypoEvents.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        RdStatCard(
+            label = "Hyper",
+            value = a.hyperEvents.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        RdStatCard(
+            label = "Low %",
+            value = a.lowPct?.let { "$it%" } ?: "—",
+            modifier = Modifier.weight(1f),
+        )
+        RdStatCard(
+            label = "High %",
+            value = a.highPct?.let { "$it%" } ?: "—",
+            modifier = Modifier.weight(1f),
         )
     }
 }
 
-@Composable
-private fun PairedMealCard(
-    delta: com.syschimp.glucoripper.data.stats.PairedMealDelta,
-    unit: GlucoseUnit,
-) {
-    InsightsCard {
-        Text(
-            "Post-meal rise",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Pre→post-meal pairs within 3 h. Tracks how much glucose climbs after you eat.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (delta.pairCount == 0) {
-            Text(
-                "No matched pre/post-meal pairs yet. Tag readings as Before meal and After meal to enable this metric.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            return@InsightsCard
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MetricBlock(
-                label = "Avg pre",
-                value = delta.avgPreMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Avg post",
-                value = delta.avgPostMgDl?.let { formatGlucose(it, unit) } ?: "—",
-                sub = unitLabel(unit),
-            )
-            MetricBlock(
-                label = "Delta",
-                value = delta.avgDeltaMgDl?.let {
-                    "%+.0f".format(it)
-                } ?: "—",
-                sub = "${unitLabel(unit)} · n=${delta.pairCount}",
-                valueColor = when {
-                    delta.avgDeltaMgDl == null -> MaterialTheme.colorScheme.onSurface
-                    delta.avgDeltaMgDl > 60 -> GlucoseHigh
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun TimeOfDayCard(stats: GlucoseStats, unit: GlucoseUnit) {
-    InsightsCard {
-        Text(
-            "By time of day",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        val maxAvg = stats.timeOfDay.mapNotNull { it.avgMgDl }.maxOrNull() ?: 0.0
-        stats.timeOfDay.forEach { bucket ->
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Text(
-                        "${bucket.label}  ·  ${"%02d".format(bucket.hourStartInclusive)}:00–${"%02d".format(bucket.hourEndInclusive)}:59",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Text(
-                        bucket.avgMgDl?.let {
-                            "${formatGlucose(it, unit)} ${unitLabel(unit)} · n=${bucket.count}"
-                        } ?: "n=${bucket.count}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TodBar(
-                    fraction = if (maxAvg > 0 && bucket.avgMgDl != null)
-                        (bucket.avgMgDl / maxAvg).toFloat() else 0f,
-                    color = barColor(
-                        bucket.avgMgDl,
-                        stats.overall.avgMgDl,
-                    ),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun TodBar(fraction: Float, color: Color) {
-    val track = MaterialTheme.colorScheme.surfaceContainer
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(10.dp)
-            .clip(RoundedCornerShape(5.dp)),
-    ) {
-        drawRoundRect(
-            color = track,
-            cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
-        )
-        if (fraction > 0f) {
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(0f, 0f),
-                size = Size(size.width * fraction.coerceIn(0f, 1f), size.height),
-                cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ContextMixCard(stats: GlucoseStats) {
-    InsightsCard {
-        Text(
-            "Tag mix",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            "Share of readings in each meal context. Untagged readings only count toward the General target.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val palette = listOf(
-            Color(0xFF30A46C),
-            Color(0xFF3B82F6),
-            Color(0xFFF59E0B),
-            Color(0xFF8B5CF6),
-            Color(0xFF9CA3AF),
-        )
-        Canvas(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(14.dp)
-                .clip(RoundedCornerShape(7.dp)),
-        ) {
-            val total = stats.contextMix.sumOf { it.count }.coerceAtLeast(1).toFloat()
-            var x = 0f
-            stats.contextMix.forEachIndexed { idx, slice ->
-                val w = size.width * (slice.count / total)
-                drawRoundRect(
-                    color = palette[idx % palette.size],
-                    topLeft = Offset(x, 0f),
-                    size = Size(w, size.height),
-                    cornerRadius = CornerRadius(0f, 0f),
-                )
-                x += w
-            }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            stats.contextMix.forEachIndexed { idx, slice ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .width(10.dp)
-                            .height(10.dp)
-                            .background(palette[idx % palette.size], RoundedCornerShape(2.dp)),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        slice.label,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Text(
-                        "${slice.percent}%  (${slice.count})",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EventsCard(aggregate: Aggregate, unit: GlucoseUnit) {
-    InsightsCard {
-        Text(
-            "Events",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            MetricBlock(
-                label = "Hypo",
-                value = aggregate.hypoEvents.toString(),
-                sub = "< ${formatGlucose(70.0, unit)} ${unitLabel(unit)}",
-                valueColor = GlucoseLow,
-            )
-            MetricBlock(
-                label = "Hyper",
-                value = aggregate.hyperEvents.toString(),
-                sub = "> ${formatGlucose(180.0, unit)} ${unitLabel(unit)}",
-                valueColor = GlucoseHigh,
-            )
-            MetricBlock(
-                label = "Low %",
-                value = aggregate.lowPct?.let { "$it%" } ?: "—",
-                sub = null,
-            )
-            MetricBlock(
-                label = "High %",
-                value = aggregate.highPct?.let { "$it%" } ?: "—",
-                sub = null,
-            )
-        }
-    }
-}
-
-@Composable
-private fun InsightsCard(content: @Composable () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        ),
-    ) {
-        Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) { content() }
-    }
-}
-
-private fun cvQualityLabel(cv: Double?): String = when {
-    cv == null -> "—"
-    cv < 36 -> "stable"
-    cv < 45 -> "fair"
-    else -> "high"
-}
-
-private fun cvQualityColor(cv: Double?): Color = when {
+private fun cvColor(cv: Double?): Color = when {
     cv == null -> Color.Unspecified
     cv < 36 -> GlucoseInRange
-    cv < 45 -> Color(0xFFF5A524)
-    else -> GlucoseHigh
-}
-
-private fun barColor(bucketAvg: Double?, overallAvg: Double?): Color {
-    if (bucketAvg == null || overallAvg == null) return Color(0xFF9CA3AF)
-    val diff = bucketAvg - overallAvg
-    return when {
-        abs(diff) < 10 -> GlucoseInRange
-        diff >= 10 -> GlucoseHigh
-        else -> GlucoseLow
-    }
+    cv < 45 -> GlucoseElevated
+    else -> GlucoseLow
 }
